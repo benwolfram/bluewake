@@ -60,7 +60,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   33,859 PNG bytes. Desktop/iOS image and key pickers are implemented in the draft. A Mac menu import
   from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
   card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
-  Android integration, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
+  Android menu/lifecycle checks in #347, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
   Windows/Linux CI passed at `254195d`. The cancellation update reaches scans, disc/archive/PNG work and
   publication; generated cancellation and buffered-close failures preserve existing packs. The iOS operation
   has Cancel and bounded background cleanup, with six Foundation lifetime cases passing. Mac tests and the full

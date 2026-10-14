@@ -2,7 +2,8 @@
 
 The bar BlueWake holds itself to: how it ships, what every platform gets, and how it treats contributors.
 [PRIORITIES.md](PRIORITIES.md) orders the work; this file says what "done" looks like. If a plan disagrees with
-this file, raise it with Chris rather than quietly doing it another way. Owner: Chris. Written October 8, 2026.
+this file, raise it with Chris rather than quietly doing it another way. Owner: Chris. Written October 8, 2026;
+implementation status updated October 15. The comparison below is the October 8 snapshot.
 
 ## Why this file exists
 
@@ -73,12 +74,22 @@ should find each setting where they expect it.
 The desktop F1 menu is fine for testing, but it isn't what Android players should see. The same goes for any new
 platform.
 
-**HD art.** The Wind Waker HD texture importer is in BlueWake (`docs/WWHD_TEXTURES.md`). It should become a menu
-action on every platform: "Import HD textures from your Wii U game". Elliott Tate's HD renderer work (a GameCube
-or HD switch, lighting, shadows, ambient occlusion) isn't on any public branch; ask him where it lives before
-planning around it.
+**HD art.** Chris chose to rebuild the HD look from Elliott's demonstration without depending on a reply or
+unpublished code. BlueWake's own optional effects are in `main`; the softer shading candidate remains draft
+#321 for visual acceptance. [WWHD_LOOK.md](WWHD_LOOK.md) records the effects and their limits.
+
+Texture import belongs in **Mods › Wind Waker HD textures › Import from Wind Waker HD…** on every platform.
+The importer runs inside the app, including on iPhone, iPad and Android; players should not need Python.
+The desktop/iOS implementation is draft #315, with Android integration in draft #347 on top of the Android
+port. A full Android emulator import matches the Mac pack, but actual mobile file-picker, lifecycle and memory
+checks remain. [WWHD_TEXTURES.md](WWHD_TEXTURES.md) is the player guide; [PRIORITIES.md](PRIORITIES.md) owns the
+remaining work. Compatible artwork comes from each player's own disc and is separate from the HD effects.
 
 ## 3. Ship small and often
+
+**Current owner decision:** hold 0.8.0 for the HD work and its acceptance checks. This loop prepares and checks
+changes; it does not publish a release. Chris decides when the hold ends. The policy below applies after that
+decision.
 
 - Release when a fix is proven on the platform it affects. Don't wait to batch.
 - Each "What's new" line leads with what the player notices, then the evidence: a measured number, the issue
@@ -118,10 +129,10 @@ What Wind Waker HD Recomp players get that BlueWake players ask for, in rough or
 | Feature | BlueWake today | Notes |
 | --- | --- | --- |
 | Copy performance report | Session log only | Section 5 |
-| Gyro aiming (DualSense, Switch Pro, Steam Deck, a DSU server) | Requested in #188 | SDL3 reads controller gyros; aim in first person like the Wii U GamePad |
+| Gyro aiming | Optional controller gyro aiming is in `main` on desktop and iOS, off by default (#188) | Physical gyro-controller acceptance remains; Android and DSU support are not established |
 | 120 and 240 FPS, matched to the display, "keep game speed" | 60 and 120 | Smooth Motion's flicker (#136) and cost on small CPUs come first |
 | A mod manager with installable packs that replace game files | Built-in mods and texture packs only (#152) | Needs a file replacement path in the disc reader |
-| HD textures from the player's own Wii U game, from the menu | The importer is a script | Section 2 |
+| HD textures from the player's own Wii U game, from the menu | Native importer in draft #315; Android integration in draft #347 | Section 2 and [WWHD_TEXTURES.md](WWHD_TEXTURES.md) |
 | Crash recovery: automatic save states plus recorded input, so a crash can be replayed | Save states exist | Turns crash reports into reproductions |
 | Cheats (items, hearts, rupees) | None | Cheap; a spare save file only |
 

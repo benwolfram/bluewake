@@ -6,11 +6,16 @@ time. Each piece is an option, off by default, and one switch turns on every pie
 - **Mac and Linux:** F1 › Display › **Wind Waker HD look**, or **F2** in the game to switch between it and the GameCube look. It applies straight away and is kept.
 - **Windows:** the settings menu › Display › **Wind Waker HD look**, or **F2** in the game. It applies straight away and is kept.
 - **iPhone and iPad:** Mods › **Wind Waker HD Look**, then restart BlueWake.
-- **Android:** not yet (the port is in #93).
+- **Android candidate (#93):** ⋯ › Mods › **Wind Waker HD Look**, then restart. The contributor checked the
+  effects on a Fold 7; the reordered menu still needs a phone check. Android remains an experimental open port.
 - **From a terminal:** `BLUEWAKE_HD_LOOK=1`.
 
 Each piece also has its own variable, which wins over the switch (`=1` on, `=0` off), so a piece that costs too
 much on a small GPU can be left out.
+
+The table below describes `main`. Draft [#321](https://github.com/chrissotraidis/bluewake/pull/321) leaves sun
+shadows out of the master switch and softens several effects after the iPad feedback. Its visual acceptance
+remains open; it has not replaced the defaults in `main`.
 
 On Mac, Linux and Windows, safe startup turns the HD look off and clears the eight `BLUEWAKE_HD_*`
 per-effect overrides listed below. F2 or the menu can turn the whole look back on during that session.
@@ -29,7 +34,7 @@ come from the player's own disc through [WWHD_TEXTURES.md](WWHD_TEXTURES.md).
 
 | Piece | In the video | Status | Variable |
 | --- | --- | --- | --- |
-| HD textures and HUD | HD menus and HUD with Wii U button labels | Imported from your own Wii U dump ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)); choosing it in the app's setup is next | `DOL_AURORA_TEXTURE_PACK` |
+| HD textures and HUD | HD menus and HUD with Wii U button labels | Existing packs are selected in Mods; native import is draft #315, with Android integration in #347. Compatible artwork only, not the Wii U menu layout ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)) | `DOL_AURORA_TEXTURE_PACK` |
 | Distant islands | Distant islands +100,000 units | **In.** Off by default | `BLUEWAKE_HD_DISTANT_ISLANDS` |
 | Bloom | Bloom | **In**, with the switch (RecompCore 0169). Off by default | `BLUEWAKE_HD_BLOOM` |
 | HD's far-distance blur | HD depth of field | **In**, with the switch (RecompCore 0170). Off by default | `BLUEWAKE_HD_FAR_BLUR` |
