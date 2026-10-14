@@ -94,6 +94,8 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   The production packaging method also passes a source-only APK check on the Mac: Java classes, native exports,
   licenses, synthetic signing and 16 KiB ZIP/ELF alignment. API 36 startup reaches the expected missing-game-data
   diagnostic. That blocks menu use; execution used 4 KiB pages and is not a gameplay or 16 KiB-kernel check.
+  A full decrypted-folder import through JNI on API 36 now produces all 3,546 keys and 33,859 PNGs
+  byte-identical to the Mac baseline. Its standalone process peaks at 377.8 MiB; this excludes the game/UI.
   Files/menu/lifecycle and phone memory checks remain.
   This candidate is not part of #93 or `main`; these importer results say nothing about gameplay speed.
 - **Texture status (#336):** the renderer's registered count and a separate next-launch notice are the agreed

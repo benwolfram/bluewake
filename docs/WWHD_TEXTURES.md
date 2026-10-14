@@ -276,7 +276,7 @@ reproduction commands are consolidated in the
 | Mac | Full decrypted-folder output: 3,546 keys and 33,859 PNGs matching the Python import's pixels. Menu import, next-launch loading and cancellation fixtures pass; copied save unchanged | Authentic WUD/WUX input; desktop mouse interaction |
 | Windows/Linux | Native importer build and generated tests pass Windows/Linux CI at `254195d`, including the cancellation update | Interactive folder/image/key imports |
 | iPhone/iPad | Generated importer execution in iOS Simulator, production app linking, and coordinated-read/cancellation lifetime checks | Actual Files/menu interaction, background transitions and full-dump memory on devices |
-| Android | Draft #347: full native/Java build, 33 provider cases, 428 JNI assertions, generated import parity and source-only APK packaging/startup | Actual Files/menu/lifecycle checks, full-dump output and memory on phones; authentic image import |
+| Android | Draft #347: full native/Java build, 33 provider cases, 428 JNI assertions and source-only APK packaging/startup. The full folder import through JNI on API 36 matches all 33,859 Mac PNG bytes | Actual Files/menu/lifecycle checks and full-dump memory on phones; authentic image import |
 
 Standalone Mac importer peak memory fell from 993 to 538 MiB; the complete
 Mac app peaked at about 1.30 GiB while importing during gameplay. These do

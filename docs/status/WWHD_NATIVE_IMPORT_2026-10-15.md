@@ -301,3 +301,24 @@ Reproduce the generated adapter check with
 `python3 tests/wwhd_android_inputs_test.py --serial emulator-NNNN` on an explicitly
 selected emulator; omitting `--serial` builds the test APK only. The JNI harness
 is `tests/wwhd_android_native_test.py`. Both use generated inputs, not game data.
+
+### Full Android folder import (October 15, 2026)
+
+The production JNI bridge and shared importer sources from `ea6e55e`, with
+RecompCore `57123c6`, were compiled with NDK r29/API 28 for a standalone ART
+harness on a fresh API 36 ARM64 emulator. It imported the supplied decrypted
+HD content folder with the GameCube disc. All 3,546 replacement keys and
+33,861 filenames matched the Mac baseline; all 33,859 PNGs were byte-identical.
+Matching report metadata, 124 skipped conflicts and 17 unsupported entries
+also matched. The baseline already has pixel parity with the Python importer.
+
+The standalone JNI process recorded 386,848 KiB (377.8 MiB) peak resident RAM
+in `/proc`'s high-water mark. This excludes the Android app, game and renderer;
+it is not a phone memory or speed result. This harness targets API 28, while
+the separately linked production app targets native API 33.
+
+Input, baseline and source hashes were unchanged. Private emulator copies,
+temporary output archives and all task AVDs were removed. The final replay
+followed corrections to two comparison-harness errors; no production fix was
+needed. Actual Files/menu use, activity lifecycle, physical-phone memory and
+an authentic WUD/WUX comparison remain open.
