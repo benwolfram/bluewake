@@ -505,7 +505,7 @@ storage exhaustion and activity recreation remain integration checks.
 
 ### Android app integration candidate (October 15, 2026)
 
-The local `codex/android-hd-import` branch combines the unmerged Android port
+Draft [#347](https://github.com/chrissotraidis/bluewake/pull/347) combines the unmerged Android port
 (#93 at `42610f2`) with #315 at `254195d` to prepare the hookup separately.
 It does not change `main`, the port's performance gate or any download.
 

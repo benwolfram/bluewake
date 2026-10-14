@@ -226,7 +226,7 @@ above records what was checked, and on what.
 
 ## Native HD import integration in progress
 
-The local `codex/android-hd-import` candidate adds **Mods › Wind Waker HD Textures
+Draft [#347](https://github.com/chrissotraidis/bluewake/pull/347) adds **Mods › Wind Waker HD Textures
 › Import from Wind Waker HD…**, using the same importer as the other builds.
 It combines this open port with draft #315; it is not in the current port PR
 or a released APK. Folder/image selection, transient key files, cancellation

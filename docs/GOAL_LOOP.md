@@ -87,7 +87,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   experiment gave no gain. HD look and D-pad sources are included; the reordered Mods menu builds but still needs a
   phone check. The native importer core at `ea31b24` now builds with NDK r29 and runs on an API 36 ARM64
   emulator: five generated imports, thirty PNG checks, three reader tests and wrong-key rejection pass.
-  A local `codex/android-hd-import` candidate now connects the menu, scoped document access and JNI importer,
+  Draft [#347](https://github.com/chrissotraidis/bluewake/pull/347) now connects the menu, scoped document access and JNI importer,
   with completed-pack selection and cancellation. Its full native app links with the approved runtime pin,
   the Java shell compiles, and 33 generated provider cases pass on an API 36 emulator. The JNI bridge also
   passes 428 assertions and 16 imports / 96 PNG checks on both the Mac JVM and Android ART.
