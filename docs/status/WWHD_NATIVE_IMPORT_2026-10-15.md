@@ -342,3 +342,40 @@ published. The completed full-pack comparison used Release optimization; the tar
 its sanitizer evidence. This confirms the separate forced-process recovery gap. Work on owned-staging
 recovery is underway in #315; it is not included in the `5fbb596` result. Android input-cache recovery is a
 separate concern from output-pack staging.
+
+
+### Interrupted-output recovery (`454393a`, October 15)
+
+Draft #315 now uses a persistent per-parent lock and versioned ownership markers.
+The next import recovers recognized abandoned output after obtaining the lock;
+live imports, completed packs, old unmarked folders, unexpected layouts and link
+targets are preserved. Nine Mac CTests passed under ASan/UBSan for this change,
+including actual process kills during output, recovery and after publication.
+
+Actual API 36 ARM64 execution found that external storage rejects `flock` with
+`ENOSYS`. The Linux fallback now uses a nonblocking open-file-description lock.
+The same generated helper passes on both internal and external Android storage,
+covering same-process contention, lock lifetime and publication. The affected
+Mac tests pass again. This runs through the shell and does not prove app storage
+permissions or menu interaction. Windows first compiled the host and passed 70
+of 71 checks; the remaining fixture tried to read the locked byte. It now checks
+the empty lock's identity and metadata without reading it. New Windows/Linux CI
+is pending for `454393a`.
+
+### Android temporary-input recovery (staged follow-up, October 15)
+
+The staged #347 follow-up places new input copies in a private, versioned
+no-backup directory, with a marker written before payload or key copies. A
+retained process lock serializes startup recovery before any live owner exists.
+Recovery does not follow links and leaves legacy cache folders and unmarked or
+invalid workspaces untouched. Cleanup removes transient keys first and retains
+the marker if it cannot finish. This is process-death recovery, not secure erase
+or power-loss durability.
+
+The complete 24-source Java shell compiles. On the task-owned API 36 ARM64
+emulator, all 36 provider cases pass. A separate force-stop/restart check leaves
+three real adapter owners open, then verifies copied inputs and keys are removed,
+provider data and proc-fd/link targets remain intact, and a new import succeeds.
+The generated fixture package is removed afterward. These changes are staged
+outside primary until the in-flight private APK verifies its source hashes;
+production Files/menu and activity-lifecycle interaction remain unverified.

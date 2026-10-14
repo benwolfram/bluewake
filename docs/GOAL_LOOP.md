@@ -66,8 +66,10 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   3,546 keys and 33,859 PNG bytes. The cancellation update reaches scans, disc/archive/PNG work and
   publication; generated cancellation and buffered-close failures preserve existing packs. The iOS operation
   has Cancel and bounded background cleanup, with six Foundation lifetime cases passing. Mac tests and the full
-  pack comparison pass; UIKit/Files interaction remains unverified. Forced-process staging recovery is still
-  open. This is not mobile acceptance.
+  pack comparison pass; UIKit/Files interaction remains unverified. Output recovery is now implemented in
+  #315 (`454393a`): Mac killed-child tests and Android internal/external-storage fixtures pass; current
+  Windows/Linux CI remains pending. Android input-copy recovery passes 36 provider cases and an actual
+  force-stop/restart fixture as a staged #347 follow-up. These are not app-menu or phone acceptance.
 - **Contributor work:** [#319](https://github.com/chrissotraidis/bluewake/pull/319) (build documentation) is merged.
   [#339](https://github.com/chrissotraidis/bluewake/pull/339) is also merged: Mac Alt+Enter/fullscreen and normal
   Return behaviour passed; the no-settings-file safe-mode fallback worked, with the copied card unchanged.
@@ -85,9 +87,9 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   wait off/on: 446 versus 448 complete the 120-frame arrival check, with R04 and R08 the only changed outcomes.
   The same four test rooms and sixteen story/cutscene entries do not complete with this save. Separate Metal
   checks show both rooms rendering and responding to input. This uses host `14bc288`, runtime `57123c6` and an
-  older prepared module; cards and tested artifacts are unchanged. Draft #350 now guards save/load while a
-  host-side wait is occupied; eight synthetic cases pass under ASan/UBSan and Windows CI passes. Linux CI
-  and fresh-module gameplay checks remain before proposing a default change. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
+  older prepared module; cards and tested artifacts are unchanged. #350 is merged (`1c0942d`) after
+  Windows/Linux CI passed: save/load is guarded while a host-side wait is occupied, with eight synthetic
+  cases passing under ASan/UBSan. Fresh-module gameplay checks remain before proposing a default change. [Evidence and limits](status/WIND_TEMPLE_2026-10-15.md).
 - **Linux resize (#325):** RecompCore#38 is open with the author's X11/NVIDIA checks. Its `bcc1b03` follow-up now
   updates the cached size on the resize path, addressing the source concern while F1 holds the guest. An explicit
   F1-open resize/fullscreen and resumed-play result is still requested. No runtime integration yet.

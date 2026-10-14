@@ -61,7 +61,7 @@ your own decrypted folder, then a USA WUD/WUX image and its keys:
   loads. Turn HD textures off, Resume and restart; check gameplay with original
   textures. Turn them on, Resume and restart again to check the pack. Confirm key paths
   and values are absent from settings. Compare the pack against the script
-  using [the documented check](WWHD_TEXTURES.md#native-importer-memory-check-october-15-2026).
+  using [the documented check](status/WWHD_NATIVE_IMPORT_2026-10-15.md#native-importer-memory-check-october-15-2026).
 - Repeat with portable mode, a path containing spaces/non-ASCII characters,
   and both mouse and controller navigation.
 

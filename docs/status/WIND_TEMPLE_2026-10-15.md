@@ -22,4 +22,4 @@ Separate Metal sessions with the same host/runtime and older module, at one retr
 
 ## Remaining
 
-The switch remains off by default. Repeat targeted checks with the freshly built module. Review the F5 save-state interaction noted on #331: pending waits retain caller state on the host, outside the saved guest state. A default change remains separate; these Mac checks do not establish phone/iPad acceptance, performance, or full dungeon completion.
+The switch remains off by default. Repeat targeted checks with the freshly built module. #350 (`1c0942d`) now protects save/load while pending waits retain caller state on the host, outside the saved guest state: F5 defers and F8 refuses. Eight generated cases pass under ASan/UBSan, with the old busy-save path failing; Windows and Linux CI passed before merge. Native save/load interaction during a real pending load still needs a copied-save check. A default change remains separate; these Mac checks do not establish phone/iPad acceptance, performance, or full dungeon completion.

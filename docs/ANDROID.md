@@ -251,6 +251,6 @@ and next-launch pack selection are wired up. The Java shell compiles, the full
 native app links, and generated provider checks pass on an emulator. Real
 Files/menu interaction and phone memory/lifecycle checks still remain.
 
-See [WWHD_TEXTURES.md](WWHD_TEXTURES.md#android-app-integration-candidate-october-15-2026)
+See [the Android importer validation](status/WWHD_NATIVE_IMPORT_2026-10-15.md#android-app-integration-candidate-october-15-2026)
 for the exact evidence and input-adapter limits. These import checks do not
 establish gameplay speed or change the port's performance acceptance gate.
