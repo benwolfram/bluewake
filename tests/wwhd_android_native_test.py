@@ -56,7 +56,13 @@ def fixtures(directory):
 def verify(outputs, baseline=None):
     reports = sorted(outputs.rglob("import-report.json"))
     assert len(reports) == 8, (outputs, len(reports))
-    assert not any(p.name.startswith(".") for p in outputs.rglob("*")), "staging leaked"
+    for path in outputs.rglob("*"):
+        if not path.name.startswith("."):
+            continue
+        # Each JNI target is an output parent. Only its persistent empty lock
+        # is expected; keep rejecting wrappers, links and locks inside packs.
+        assert (path.name == ".bluewake-wwhd-import.lock" and path.parent.parent == outputs
+                and not path.is_symlink() and path.is_file() and path.stat().st_size == 0), "staging leaked: " + str(path)
     for report in reports:
         pngs = fixture.check_pack(report.parent, exact=False)
         if baseline is None:

@@ -17,13 +17,10 @@ import android.system.StructPollfd;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,7 +31,7 @@ import java.util.Set;
 
 /** Worker-only SAF inputs. Keep this owner alive through the entire native call;
  * cancel the worker, then close here, never close its descriptors from the UI.
- * No persistent URI grants, provider writes, key logging or shared-cache cleanup.
+ * No persistent URI grants, provider writes, key logging or legacy-cache cleanup.
  */
 public final class HDImportInputs implements AutoCloseable {
     public interface Progress { void onProgress(String message); }
@@ -48,6 +45,7 @@ public final class HDImportInputs implements AutoCloseable {
     private final Progress progress;
     private final Set<String> documents = new HashSet<>();
     private final Path staging;
+    private final HDImportWorkspace workspace;
     private ParcelFileDescriptor imageDescriptor;
     private long copied, reported, nameBytes;
     private int entries, resources;
@@ -71,7 +69,8 @@ public final class HDImportInputs implements AutoCloseable {
         } else if (discKey != null || contentKey != null) {
             throw new IOException("Folder imports do not use key files.");
         }
-        staging = Files.createTempDirectory(context.getCacheDir().toPath(), "wwhd-input-");
+        workspace = HDImportWorkspace.create(context);
+        staging = workspace.path;
         try {
             sourcePath = image ? prepareImage(source) : prepareFolder(source);
             discKeyPath = image ? prepareKey(discKey, "disc.key") : "";
@@ -369,17 +368,7 @@ public final class HDImportInputs implements AutoCloseable {
             finally { imageDescriptor = null; }
         }
         try {
-            if (Files.exists(staging)) Files.walkFileTree(staging, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    Files.delete(file);
-                    return FileVisitResult.CONTINUE;
-                }
-                @Override public FileVisitResult postVisitDirectory(Path directory, IOException error) throws IOException {
-                    if (error != null) throw error;
-                    Files.delete(directory);
-                    return FileVisitResult.CONTINUE;
-                }
-            }); // Does not follow symlinks, and never visits a different import.
+            workspace.close();
         } catch (IOException error) {
             if (failure == null) failure = error; else failure.addSuppressed(error);
         }

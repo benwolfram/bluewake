@@ -293,9 +293,9 @@ The production JNI bridge passed 428 assertions on the Mac JVM, including
 concurrent/stale session rejection, cleanup and late-cancel success. The same
 428 assertions and 16 imports / 96 PNG checks also pass through JNI in four ART
 processes on a fresh API 36 ARM64 emulator, with output matching the host baseline.
-The temporary emulator was then stopped and removed. Complete Files/menu
-interaction, activity recreation, physical-phone memory and authentic-disc
-import remain to be established.
+The temporary emulator was then stopped and removed. These generated checks
+do not establish Files/menu interaction, activity recreation, physical-phone
+memory or authentic-disc import; the baseline app folder check is recorded below.
 
 Reproduce the generated adapter check with
 `python3 tests/wwhd_android_inputs_test.py --serial emulator-NNNN` on an explicitly
@@ -320,8 +320,37 @@ the separately linked production app targets native API 33.
 Input, baseline and source hashes were unchanged. Private emulator copies,
 temporary output archives and all task AVDs were removed. The final replay
 followed corrections to two comparison-harness errors; no production fix was
-needed. Actual Files/menu use, activity lifecycle, physical-phone memory and
-an authentic WUD/WUX comparison remain open.
+needed. This standalone harness does not establish Files/menu use or activity
+lifecycle; the baseline app folder check follows. Physical-phone memory and an
+authentic WUD/WUX comparison remain open.
+
+### Android app folder import and restart (October 15, 2026)
+
+The private baseline APK used host `ea6e55e`, gallery game module `14bc288`
+and the approved RecompCore `57123c6`. It ran on an API 36 ARM64 emulator with
+host-GPU Vulkan on the Apple M3 Max. This APK predates both the output-recovery
+integration and the temporary-input recovery overlay described below.
+
+Through the actual app UI and Android document picker, **⋯ › Mods › Import**
+selected the supplied decrypted `content` folder. Cancelling during the copy
+returned to the game and removed the temporary input cache. A full retry
+completed with 3,546 replacement keys, 33,861 files, 124 skipped conflicts and
+17 unsupported entries. All 33,859 PNG hashes match the previously verified
+Mac baseline. The temporary input cache was clean and the copied card was
+unchanged at import completion.
+
+**Turn On** correctly displayed the next-launch notice. After an OS process
+restart, renderer logs recorded 3,546 registrations and actual texture
+replacements; the HD title logo was visible. The separate HD look remained off.
+The complete app process recorded `VmHWM=549528 KiB` (536.6 MiB), read by a
+two-second `/proc` sampler. This is the emulator process's resident high-water
+mark, not physical-phone memory acceptance or a speed benchmark.
+
+Local evidence is `build/wwhd-android-game-check/emulator/ui/full-import-proof.json`,
+with screenshots and logs beside it. This establishes baseline folder-picker,
+copy-cancellation, full-import and restart-loading behavior. It does not validate
+the newly integrated recovery code, authentic WUD/WUX input, activity recreation,
+background transitions or a physical device. Fresh-slot gameplay is still pending.
 
 ### Removal failures and complete-pack comparison (`71642ec`, October 15)
 
@@ -362,9 +391,9 @@ of 71 checks; the remaining fixture tried to read the locked byte. It now checks
 the empty lock's identity and metadata without reading it. New Windows/Linux CI
 is pending for `454393a`.
 
-### Android temporary-input recovery (staged follow-up, October 15)
+### Android temporary-input recovery (October 15)
 
-The staged #347 follow-up places new input copies in a private, versioned
+The #347 follow-up places new input copies in a private, versioned
 no-backup directory, with a marker written before payload or key copies. A
 retained process lock serializes startup recovery before any live owner exists.
 Recovery does not follow links and leaves legacy cache folders and unmarked or
@@ -376,6 +405,7 @@ The complete 24-source Java shell compiles. On the task-owned API 36 ARM64
 emulator, all 36 provider cases pass. A separate force-stop/restart check leaves
 three real adapter owners open, then verifies copied inputs and keys are removed,
 provider data and proc-fd/link targets remain intact, and a new import succeeds.
-The generated fixture package is removed afterward. These changes are staged
-outside primary until the in-flight private APK verifies its source hashes;
-production Files/menu and activity-lifecycle interaction remain unverified.
+The generated fixture package is removed afterward. After the private APK
+verified its source hashes, these changes were integrated for review with #315
+at `3b13534`. The baseline app UI check above predates this recovery overlay;
+its production Files/menu and activity-lifecycle behavior remain unverified.

@@ -60,7 +60,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   33,859 PNG bytes. Desktop/iOS image and key pickers are implemented in the draft. A Mac menu import
   from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
   card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
-  Android menu/lifecycle checks in #347, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
+  Android recovery/lifecycle and phone checks in #347, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
   Windows/Linux CI passed at `5fbb596`, including `71642ec` rejecting failed removal of conflicting
   textures. Targeted failure checks pass under ASan/UBSan; a full optimized Mac import still matches all
   3,546 keys and 33,859 PNG bytes. The cancellation update reaches scans, disc/archive/PNG work and
@@ -112,11 +112,16 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   diagnostic. That blocks menu use; execution used 4 KiB pages and is not a gameplay or 16 KiB-kernel check.
   A full decrypted-folder import through JNI on API 36 now produces all 3,546 keys and 33,859 PNGs
   byte-identical to the Mac baseline. Its standalone process peaks at 377.8 MiB; this excludes the game/UI.
-  Files/menu/lifecycle and phone memory checks remain.
+  The baseline APK (`ea6e55e` host, `14bc288` game module, `57123c6` runtime) now passes actual
+  API 36 folder-picker import, copy cancellation, full retry and restart loading: all 33,859 PNG
+  hashes match, the renderer registers 3,546 replacements, and the HD title is visible with HD look off.
+  The copied card is unchanged at import completion. Full-app `VmHWM` is 536.6 MiB on the emulator,
+  not a phone measurement. The APK predates recovery; its app validation, activity/background
+  transitions, fresh-slot gameplay, authentic image input and physical-phone checks remain.
   This candidate is not part of #93 or `main`; these importer results say nothing about gameplay speed.
 - **Texture status (#336):** the renderer's registered count and a separate next-launch notice are the agreed
   direction. #345's clearer folder status and #344's Linux portal build dependency are merged after green CI.
-  The Mac status checks pass; the Linux picker needs a real desktop check. The registered-count API is not
+  The Mac status checks pass, and jkoehler11 confirmed the Linux picker works in [#336](https://github.com/chrissotraidis/bluewake/issues/336#issuecomment-6178187453). The registered-count API is not
   started; #315 comes first, and pdale-boop can continue other menu work. HD shading
   acceptance (#321) and the physical iPad menu-switch check (#316) also remain open.
 

@@ -46,6 +46,7 @@ public class BlueWakeActivity extends SDLActivity implements InputManager.InputD
     protected void onCreate(Bundle savedInstanceState) {
         applyLockScreenSwitch(getIntent());
         super.onCreate(savedInstanceState);
+        HDImportWorkspace.recoverOnStartup(getApplicationContext());
         if (mBrokenLibraries || mLayout == null)
             return;  // SDL has said why and closes
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

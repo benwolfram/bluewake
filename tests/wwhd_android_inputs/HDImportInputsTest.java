@@ -22,7 +22,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
+import java.nio.file.FileVisitResult;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -43,6 +47,8 @@ public final class HDImportInputsTest extends Instrumentation {
     private static final byte[] DATA = new byte[131091];
     private static final byte[] KEY = new byte[16];
     private int passed;
+    private String phase;
+    private final List<HDImportInputs> deathOwners = new ArrayList<>();
     private static native byte[] nativeRead(String path);
 
     private static byte[] mappedWux(byte[] data) {
@@ -88,6 +94,7 @@ public final class HDImportInputsTest extends Instrumentation {
         }
         @Override public Cursor query(Uri uri, String[] columns, String where, String[] args, String sort,
                 CancellationSignal signal) {
+            require(!Thread.holdsLock(HDImportWorkspace.class), "provider query under initialization monitor");
             if (block.equals("query")) waitForCancellation(signal);
             MatrixCursor cursor = new MatrixCursor(columns);
             String id = DocumentsContract.getDocumentId(uri);
@@ -136,6 +143,7 @@ public final class HDImportInputsTest extends Instrumentation {
         }
         @Override public ParcelFileDescriptor openFile(Uri uri, String mode, CancellationSignal signal)
                 throws FileNotFoundException {
+            require(!Thread.holdsLock(HDImportWorkspace.class), "provider open under initialization monitor");
             if (!mode.equals("r")) { readOnly = false; throw new AssertionError("provider opened writable"); }
             if (block.equals("open")) waitForCancellation(signal);
             Node node = nodes.get(DocumentsContract.getDocumentId(uri));
@@ -190,8 +198,24 @@ public final class HDImportInputsTest extends Instrumentation {
     private static byte[] read(String path) throws IOException {
         try (FileInputStream stream = new FileInputStream(path)) { return stream.readAllBytes(); }
     }
-    private Set<String> cache() {
-        return new HashSet<>(Arrays.asList(getTargetContext().getCacheDir().list()));
+    private Map<String, String> storage() throws IOException {
+        Map<String, String> result = new HashMap<>();
+        for (File base : new File[]{getTargetContext().getCacheDir(), getTargetContext().getNoBackupFilesDir()}) {
+            Path root = base.toPath();
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                private String name(Path path) { return base.getName() + "/" + root.relativize(path); }
+                @Override public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes info) {
+                    result.put(name(path), "directory");
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFile(Path path, BasicFileAttributes info) throws IOException {
+                    result.put(name(path), info.isSymbolicLink() ? "link:" + Files.readSymbolicLink(path)
+                            : Arrays.toString(Files.readAllBytes(path)));
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+        return result;
     }
     private void reset() throws Exception {
         for (Thread writer : Provider.writers) {
@@ -218,9 +242,9 @@ public final class HDImportInputsTest extends Instrumentation {
     private interface Case { void run() throws Exception; }
     private void check(String label, Case test) throws Exception {
         reset();
-        Set<String> before = cache();
+        Map<String, String> before = storage();
         test.run();
-        require(cache().equals(before), label + ": leaked staging or touched another import");
+        require(storage().equals(before), label + ": leaked staging or touched another import");
         require(Provider.readOnly, "provider was opened writable");
         ++passed;
         Bundle status = new Bundle(); status.putString("stream", "PASS: " + label + "\n"); sendStatus(0, status);
@@ -257,10 +281,13 @@ public final class HDImportInputsTest extends Instrumentation {
     }
 
     private void tests() throws Exception {
+        HDImportWorkspace.initialize(getTargetContext()); // Persistent root/lock are not a leak.
         for (int i = 0; i < DATA.length; ++i) DATA[i] = (byte)(i * 7);
         for (int i = 0; i < KEY.length; ++i) KEY[i] = (byte)i;
         Path unrelated = Files.createTempFile(getTargetContext().getCacheDir().toPath(), "unrelated-", ".txt");
         Files.write(unrelated, KEY);
+        Path legacy = Files.createTempDirectory(getTargetContext().getCacheDir().toPath(), "wwhd-input-legacy-");
+        Files.write(legacy.resolve("disc.key"), KEY);
         check("tree root filters content and preserves relative names", () -> {
             try (HDImportInputs input = prepare(false, new CancellationSignal(), null)) {
                 require(Arrays.equals(read(input.sourcePath + "/Object/雪.bfres"), DATA), "folder bytes differ");
@@ -366,15 +393,161 @@ public final class HDImportInputsTest extends Instrumentation {
                 require(Arrays.equals(read(first.discKeyPath), KEY), "other staging removed");
             }
         });
+        check("repeated concurrent initialization never sweeps a live owner", () -> {
+            try (HDImportInputs input = prepare(true, new CancellationSignal(), null)) {
+                ExecutorService workers = Executors.newFixedThreadPool(2);
+                try {
+                    Future<Path> first = workers.submit(() -> HDImportWorkspace.initialize(getTargetContext()));
+                    Future<Path> second = workers.submit(() -> HDImportWorkspace.initialize(getTargetContext()));
+                    require(first.get(2, TimeUnit.SECONDS).equals(second.get(2, TimeUnit.SECONDS)), "initializer roots differ");
+                    require(Arrays.equals(read(input.discKeyPath), KEY), "initializer removed live keys");
+                    require(Arrays.equals(read(input.sourcePath), DATA), "initializer removed live image alias");
+                } finally { workers.shutdownNow(); }
+            }
+        });
+        check("cleanup preserves marker after bounded-depth failure and can retry", () -> {
+            HDImportWorkspace workspace = HDImportWorkspace.create(getTargetContext());
+            Path marker = workspace.path.resolve(".owner");
+            byte[] originalMarker = Files.readAllBytes(marker);
+            Files.write(workspace.path.resolve("disc.key"), KEY);
+            List<Path> nested = new ArrayList<>();
+            Path at = workspace.path;
+            for (int i = 0; i < 42; ++i) { at = Files.createDirectory(at.resolve("d")); nested.add(at); }
+            failure(workspace::close);
+            require(Arrays.equals(originalMarker, Files.readAllBytes(marker)), "partial cleanup lost marker");
+            require(!Files.exists(workspace.path.resolve("disc.key")), "key was not removed before tree cleanup");
+            for (int i = nested.size() - 1; i >= 0; --i) Files.delete(nested.get(i));
+            workspace.close(); workspace.close();
+        });
+        check("invalid ownership marker preserves payload", () -> {
+            HDImportWorkspace workspace = HDImportWorkspace.create(getTargetContext());
+            Path marker = workspace.path.resolve(".owner"), payload = workspace.path.resolve("disc.key");
+            byte[] originalMarker = Files.readAllBytes(marker);
+            Files.write(marker, new byte[]{1}); Files.write(payload, KEY);
+            failure(workspace::close);
+            require(Arrays.equals(KEY, Files.readAllBytes(payload)), "invalid ownership removed payload");
+            Files.write(marker, originalMarker); workspace.close();
+        });
         reset(); // Join all generated pipe writers before reporting completion.
         require(Arrays.equals(Files.readAllBytes(unrelated), KEY), "unowned cache file changed");
         Files.delete(unrelated);
+        require(Arrays.equals(KEY, Files.readAllBytes(legacy.resolve("disc.key"))), "legacy cache input changed");
+        Files.delete(legacy.resolve("disc.key")); Files.delete(legacy);
     }
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+
+    private Path workspaceRoot() { return getTargetContext().getNoBackupFilesDir().toPath().resolve("wwhd-input-v1"); }
+    private Path files() { return getTargetContext().getFilesDir().toPath(); }
+    private static String protectedName(int index) { return "input-00000000-0000-0000-0000-00000000000" + index; }
+
+    private void prepareDeath() throws Exception {
+        reset();
+        for (int i = 0; i < DATA.length; ++i) DATA[i] = (byte)(i * 7);
+        HDImportInputs image = prepare(true, new CancellationSignal(), null);
+        deathOwners.add(image);
+        deathOwners.add(prepare(false, new CancellationSignal(), null));
+        Provider.nodes.get("image").mode = "pipe";
+        deathOwners.add(prepare(true, new CancellationSignal(), null));
+        List<String> names = new ArrayList<>();
+        for (HDImportInputs input : deathOwners) {
+            Path directory = Path.of(input.discKeyPath.isEmpty() ? input.sourcePath : input.discKeyPath).getParent();
+            names.add(directory.getFileName().toString());
+        }
+        Path root = workspaceRoot();
+        byte[] marker = Files.readAllBytes(root.resolve(names.get(0)).resolve(".owner"));
+        Path victim = Files.createDirectory(files().resolve("recovery-victim"));
+        Files.write(victim.resolve("keep.bin"), DATA);
+        Files.write(victim.resolve(".owner"), marker);
+        // Recovery must preserve unmarked/invalid/linked roots even when they
+        // have names that otherwise look like an importer workspace.
+        for (int i = 1; i <= 3; ++i) {
+            Path protectedDirectory = Files.createDirectory(root.resolve(protectedName(i)));
+            Files.write(protectedDirectory.resolve("keep.bin"), DATA);
+            if (i == 2) Files.write(protectedDirectory.resolve(".owner"), new byte[]{1});
+            if (i == 3) Files.createSymbolicLink(protectedDirectory.resolve(".owner"), victim.resolve(".owner"));
+        }
+        Files.createSymbolicLink(root.resolve(protectedName(4)), victim);
+        Path legacy = Files.createDirectory(getTargetContext().getCacheDir().toPath().resolve("wwhd-input-death-legacy"));
+        Files.write(legacy.resolve("keep.bin"), DATA);
+        Files.write(root.resolve(names.get(0)).resolve("partly-removed.bin"), DATA);
+        Files.delete(root.resolve(names.get(0)).resolve("partly-removed.bin"));
+        Files.write(files().resolve("recovery-state.txt"), names, StandardCharsets.US_ASCII);
+        Bundle ready = new Bundle();
+        ready.putString("stream", "RECOVERY_READY pid=" + android.os.Process.myPid() + "\n");
+        sendStatus(0, ready);
+        new CountDownLatch(1).await(); // Host force-stops this process. No close/finally cleanup.
+    }
+
+    private void recoverDeath() throws Exception {
+        Path root = workspaceRoot(), victim = files().resolve("recovery-victim");
+        byte[] victimMarker = Files.readAllBytes(victim.resolve(".owner"));
+        List<String> names = Files.readAllLines(files().resolve("recovery-state.txt"), StandardCharsets.US_ASCII);
+        require(names.size() == 3, "missing process-death owners");
+        for (String name : names) {
+            require(name.matches("input-[0-9a-f-]{36}"), "invalid fixture workspace name");
+            require(Files.isDirectory(root.resolve(name), LinkOption.NOFOLLOW_LINKS), "staging disappeared before recovery");
+        }
+        Path image = root.resolve(names.get(0));
+        require(Files.exists(image.resolve("disc.key")) && Files.exists(image.resolve("title.key")), "no transient keys survived kill");
+        require(Files.exists(root.resolve(names.get(1)).resolve("input/Object/雪.bfres")), "no folder copy survived kill");
+        require(Files.exists(root.resolve(names.get(2)).resolve("source.wux")), "no pipe copy survived kill");
+        // Rebind the stale proc alias to an actually live descriptor in this new
+        // process. Recovery must unlink it, not inspect or delete its target.
+        try (ParcelFileDescriptor descriptor = ParcelFileDescriptor.open(victim.resolve("keep.bin").toFile(), ParcelFileDescriptor.MODE_READ_ONLY)) {
+            Files.delete(image.resolve("disc.wud"));
+            Files.createSymbolicLink(image.resolve("disc.wud"), Path.of("/proc/self/fd/" + descriptor.getFd()));
+            Files.createSymbolicLink(image.resolve("outside-directory"), victim);
+            ExecutorService workers = Executors.newFixedThreadPool(2);
+            try {
+                Future<Path> first = workers.submit(() -> HDImportWorkspace.initialize(getTargetContext()));
+                Future<Path> second = workers.submit(() -> HDImportWorkspace.initialize(getTargetContext()));
+                require(first.get(5, TimeUnit.SECONDS).equals(second.get(5, TimeUnit.SECONDS)), "restart roots differ");
+            } finally { workers.shutdownNow(); }
+            require(descriptor.getStatSize() == DATA.length, "recovery changed provider descriptor target");
+        }
+        for (String name : names) require(!Files.exists(root.resolve(name), LinkOption.NOFOLLOW_LINKS), "killed owner's workspace remains");
+        byte[] expected = new byte[DATA.length];
+        for (int i = 0; i < expected.length; ++i) expected[i] = (byte)(i * 7);
+        require(Arrays.equals(Files.readAllBytes(victim.resolve("keep.bin")), expected), "outside target changed");
+        require(Arrays.equals(Files.readAllBytes(victim.resolve(".owner")), victimMarker), "outside marker changed");
+        for (int i = 1; i <= 4; ++i) require(Files.exists(root.resolve(protectedName(i)), LinkOption.NOFOLLOW_LINKS), "unowned root removed");
+        require(!Files.exists(root.resolve(protectedName(1)).resolve(".owner"), LinkOption.NOFOLLOW_LINKS), "unmarked root was adopted");
+        require(Arrays.equals(Files.readAllBytes(root.resolve(protectedName(2)).resolve(".owner")), new byte[]{1}), "invalid marker changed");
+        require(Files.readSymbolicLink(root.resolve(protectedName(3)).resolve(".owner")).equals(victim.resolve(".owner")), "linked marker changed");
+        require(Files.readSymbolicLink(root.resolve(protectedName(4))).equals(victim), "linked root changed");
+        for (int i = 1; i <= 3; ++i) {
+            Path protectedDirectory = root.resolve(protectedName(i));
+            require(Arrays.equals(Files.readAllBytes(protectedDirectory.resolve("keep.bin")), expected), "unowned payload changed");
+            Files.deleteIfExists(protectedDirectory.resolve(".owner"));
+            Files.delete(protectedDirectory.resolve("keep.bin")); Files.delete(protectedDirectory);
+        }
+        Files.delete(root.resolve(protectedName(4)));
+        Path legacy = getTargetContext().getCacheDir().toPath().resolve("wwhd-input-death-legacy");
+        require(Arrays.equals(Files.readAllBytes(legacy.resolve("keep.bin")), expected), "legacy cache copy changed");
+        Files.delete(legacy.resolve("keep.bin")); Files.delete(legacy);
+        Files.delete(victim.resolve("keep.bin")); Files.delete(victim.resolve(".owner")); Files.delete(victim);
+        Files.delete(files().resolve("recovery-state.txt"));
+        reset();
+        try (HDImportInputs input = prepare(true, new CancellationSignal(), null)) {
+            require(Files.exists(Path.of(input.discKeyPath)), "new import after recovery failed");
+        }
+    }
+
+    @Override public void onCreate(Bundle arguments) {
+        super.onCreate(arguments);
+        phase = arguments == null ? "" : arguments.getString("phase", "");
+        start();
+    }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
             System.loadLibrary("wwhd_inputs_probe");
+            if (phase.equals("crash-prepare")) { prepareDeath(); throw new AssertionError("kill fixture returned"); }
+            if (phase.equals("crash-recover")) {
+                recoverDeath();
+                result.putString("stream", "PASS: real process-death input recovery, retained-lock release, preservation and proc-fd aliases\n");
+                finish(-1, result);
+                return;
+            }
             tests();
             result.putString("stream", "PASS: " + passed + " generated Android document-adapter cases\n");
             finish(-1, result);

@@ -3,6 +3,7 @@ package dev.bluewake.android;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -42,7 +43,12 @@ final class WWHDAndroidNativeTest {
     private static void empty(String target) throws Exception {
         if (!Files.exists(output(target))) return;
         try (Stream<Path> entries = Files.list(output(target))) {
-            check(entries.count() == 0, "no staged or published pack for " + target);
+            Path[] remaining = entries.toArray(Path[]::new);
+            // Output ownership keeps one empty lock after failure/cancellation.
+            check(remaining.length == 0 || (remaining.length == 1 &&
+                  remaining[0].getFileName().toString().equals(".bluewake-wwhd-import.lock") &&
+                  Files.isRegularFile(remaining[0], LinkOption.NOFOLLOW_LINKS) &&
+                  Files.size(remaining[0]) == 0), "no staged or published pack for " + target);
         }
     }
 

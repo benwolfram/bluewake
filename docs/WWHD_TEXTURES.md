@@ -276,10 +276,13 @@ reproduction commands are consolidated in the
 | Mac | Full decrypted-folder output: 3,546 keys and 33,859 PNGs matching the Python import's pixels. Menu import, next-launch loading and cancellation fixtures pass; copied save unchanged | Authentic WUD/WUX input; desktop mouse interaction |
 | Windows/Linux | Native importer build and generated tests pass Windows/Linux CI at `254195d`, including the cancellation update | Interactive folder/image/key imports |
 | iPhone/iPad | Generated importer execution in iOS Simulator, production app linking, and coordinated-read/cancellation lifetime checks | Actual Files/menu interaction, background transitions and full-dump memory on devices |
-| Android | Draft #347: full native/Java build, 33 provider cases, 428 JNI assertions and source-only APK packaging/startup. The full folder import through JNI on API 36 matches all 33,859 Mac PNG bytes | Actual Files/menu/lifecycle checks and full-dump memory on phones; authentic image import |
+| Android | Baseline APK `ea6e55e` on API 36: actual folder picker, copy cancellation, full import and restart loading pass; all 33,859 PNG hashes match the Mac baseline, with 3,546 renderer registrations and the HD title visible. Copied card unchanged at import completion | Newly integrated recovery in the app; activity/background transitions, fresh-slot gameplay, physical-phone memory and authentic image import |
 
 Standalone Mac importer peak memory fell from 993 to 538 MiB; the complete
 Mac app peaked at about 1.30 GiB while importing during gameplay. These do
 not establish a mobile memory budget. Force-quitting can leave hidden staging
-folders, and a stalled OS read can delay cancellation; restart recovery and
-cleanup-failure reporting remain open.
+folders. A later import using the same output parent recovers recognized output
+with a valid ownership marker; completed packs and older unmarked folders stay
+untouched. Cleanup failures are reported. A stalled OS read can still delay
+cancellation; app-level force-close/retry and mobile input-copy recovery remain
+separate from the shared output recovery checks in the dated validation record.

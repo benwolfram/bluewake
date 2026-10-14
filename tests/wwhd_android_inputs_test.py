@@ -9,11 +9,12 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
+import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = ROOT / "tests/wwhd_android_inputs"
 PACKAGE = "dev.bluewake.hdinputs.test"
 
 
@@ -22,8 +23,16 @@ def main():
     parser.add_argument("--sdk", type=Path, default=Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk")))
     parser.add_argument("--jdk", type=Path)
     parser.add_argument("--serial", help="Explicit emulator serial; omitted means build only")
+    parser.add_argument("--repo-root", type=Path, default=ROOT, help="Base checkout for unchanged sources")
+    parser.add_argument("--source-overlay", type=Path, help="Prefer staged repo-relative source files")
+    parser.add_argument("--out", type=Path, help="Separate evidence/build directory")
     args = parser.parse_args()
-    out = ROOT / "build/wwhd-disc-import/android-inputs"
+    root = args.repo_root.resolve()
+    overlay = args.source_overlay.resolve() if args.source_overlay else None
+    def source(name):
+        staged = overlay / name if overlay else None
+        return staged if staged and staged.is_file() else root / name
+    out = (args.out or root / "build/wwhd-disc-import/android-inputs").resolve()
     out.mkdir(parents=True, exist_ok=True)
     commands = []
     env = dict(os.environ)
@@ -36,7 +45,7 @@ def main():
     def run(command, *, check=True, timeout=120):
         command = list(map(str, command))
         commands.append(shlex.join(command))
-        result = subprocess.run(command, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE,
+        result = subprocess.run(command, cwd=root, env=env, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, timeout=timeout)
         with (out / "build.log").open("a") as log:
             log.write(shlex.join(command) + "\n" + result.stdout)
@@ -46,17 +55,21 @@ def main():
 
     (out / "build.log").write_text("")
     classes = out / "classes"
+    if classes.exists(): shutil.rmtree(classes)
     classes.mkdir(exist_ok=True)
-    sources = [ROOT / "android/java/dev/bluewake/android/HDImportInputs.java", FIXTURES / "HDImportInputsTest.java"]
+    names = ["android/java/dev/bluewake/android/HDImportInputs.java",
+             "android/java/dev/bluewake/android/HDImportWorkspace.java",
+             "tests/wwhd_android_inputs/HDImportInputsTest.java"]
+    sources = [source(name) for name in names]
     run([jdk / "bin/javac", "--release", "11", "-Xlint:all", "-classpath", jar, "-d", classes, *sources])
     run([jdk / "bin/jar", "--create", "--file", out / "classes.jar", "-C", classes, "."])
     run([tools / "d8", "--release", "--min-api", "28", "--lib", jar, "--output", out, out / "classes.jar"])
     library = out / "libwwhd_inputs_probe.so"
     run([ndk, "-std=c++17", "-shared", "-fPIC", "-static-libstdc++", "-O1", "-Wall", "-Wextra",
-         "-I", ROOT / "runtime/host/src", FIXTURES / "native_probe.cpp",
-         ROOT / "runtime/host/src/wwhd/disc_image.cpp", "-o", library])
+         "-I", root / "runtime/host/src", source("tests/wwhd_android_inputs/native_probe.cpp"),
+         source("runtime/host/src/wwhd/disc_image.cpp"), "-o", library])
     unsigned = out / "unsigned.apk"
-    run([tools / "aapt2", "link", "-o", unsigned, "--manifest", FIXTURES / "AndroidManifest.xml", "-I", jar])
+    run([tools / "aapt2", "link", "-o", unsigned, "--manifest", source("tests/wwhd_android_inputs/AndroidManifest.xml"), "-I", jar])
     with zipfile.ZipFile(unsigned, "a") as archive:
         archive.write(out / "classes.dex", "classes.dex")
         archive.write(library, "lib/arm64-v8a/libwwhd_inputs_probe.so")
@@ -75,7 +88,9 @@ def main():
         adb = [args.sdk / "platform-tools/adb", "-s", args.serial]
         if run([*adb, "shell", "getprop", "ro.kernel.qemu"]).strip() != "1":
             raise ValueError("Selected device is not an emulator")
-        run([*adb, "install", "-r", "-t", apk])
+        if run([*adb, "shell", "pm", "path", PACKAGE], check=False).strip():
+            raise ValueError("Fixture package already installed; preserve the other test session")
+        run([*adb, "install", "-t", apk])
         try:
             result = run([*adb, "shell", "am", "instrument", "-w", "-r",
                           PACKAGE + "/dev.bluewake.android.HDImportInputsTest"])
@@ -83,13 +98,47 @@ def main():
             if "INSTRUMENTATION_CODE: -1" not in result or "generated Android document-adapter cases" not in result or "FAIL:" in result:
                 raise RuntimeError(result)
             print(result)
+            # A genuine process kill leaves three real adapter owners open.
+            # A new instrumentation process must reacquire the retained lock,
+            # remove only marked workspaces and preserve provider/legacy data.
+            run([*adb, "shell", "am", "force-stop", PACKAGE])
+            hold_command = list(map(str, [*adb, "shell", "am", "instrument", "-w", "-r", "-e", "phase", "crash-prepare",
+                                          PACKAGE + "/dev.bluewake.android.HDImportInputsTest"]))
+            commands.append(shlex.join(hold_command))
+            hold_log = out / "process-death-prepare.log"
+            with hold_log.open("w") as log:
+                held = subprocess.Popen(hold_command, cwd=root, env=env, text=True, stdout=log, stderr=subprocess.STDOUT)
+                try:
+                    deadline = time.monotonic() + 30
+                    while "RECOVERY_READY pid=" not in hold_log.read_text():
+                        if held.poll() is not None or time.monotonic() >= deadline:
+                            raise RuntimeError("Process-death fixture did not become ready: " + hold_log.read_text())
+                        time.sleep(0.1)
+                    run([*adb, "shell", "am", "force-stop", PACKAGE])
+                    held.wait(timeout=15)
+                    if run([*adb, "shell", "pidof", PACKAGE], check=False).strip():
+                        raise RuntimeError("Killed fixture process still exists")
+                finally:
+                    if held.poll() is None:
+                        run([*adb, "shell", "am", "force-stop", PACKAGE], check=False)
+                        held.terminate()
+                        try: held.wait(timeout=5)
+                        except subprocess.TimeoutExpired: held.kill(); held.wait(timeout=5)
+            result = run([*adb, "shell", "am", "instrument", "-w", "-r", "-e", "phase", "crash-recover",
+                          PACKAGE + "/dev.bluewake.android.HDImportInputsTest"])
+            (out / "process-death-recover.log").write_text(result)
+            if "INSTRUMENTATION_CODE: -1" not in result or "PASS: real process-death input recovery" not in result or "FAIL:" in result:
+                raise RuntimeError(result)
+            print(result)
         finally:
             run([*adb, "uninstall", PACKAGE])
-    (out / "commands.sh").write_text("#!/bin/sh\nset -eu\ncd " + shlex.quote(str(ROOT)) + "\n" + "\n".join(commands) + "\n")
-    files = [*sources, FIXTURES / "native_probe.cpp", FIXTURES / "AndroidManifest.xml", Path(__file__),
-             ROOT / "runtime/host/src/wwhd/disc_image.cpp", ROOT / "runtime/host/src/wwhd/disc_image.h"]
+    (out / "commands.sh").write_text("#!/bin/sh\nset -eu\ncd " + shlex.quote(str(root)) + "\n" + "\n".join(commands) + "\n")
+    files = [*sources, source("tests/wwhd_android_inputs/native_probe.cpp"), source("tests/wwhd_android_inputs/AndroidManifest.xml"), Path(__file__),
+             source("runtime/host/src/wwhd/disc_image.cpp"), source("runtime/host/src/wwhd/disc_image.h")]
     (out / "proof.json").write_text(json.dumps({"serial": args.serial, "apk": str(apk),
-        "sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}, indent=2) + "\n")
+        "repo_root": str(root), "source_overlay": str(overlay) if overlay else None,
+        "process_death_executed": args.serial is not None,
+        "sha256": {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}, indent=2) + "\n")
     print("Evidence: " + str(out))
 
 

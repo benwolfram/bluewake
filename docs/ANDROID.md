@@ -248,8 +248,11 @@ Draft [#347](https://github.com/chrissotraidis/bluewake/pull/347) adds **Mods â€
 It combines this open port with draft #315; it is not in the current port PR
 or a released APK. Folder/image selection, transient key files, cancellation
 and next-launch pack selection are wired up. The Java shell compiles, the full
-native app links, and generated provider checks pass on an emulator. Real
-Files/menu interaction and phone memory/lifecycle checks still remain.
+native app links, and generated provider checks pass on an emulator. The baseline
+APK also passes actual folder-picker import, copy cancellation and restart loading
+on API 36, with all 33,859 PNG hashes matching the Mac baseline. That APK predates
+the recovery overlay. Its app integration, activity/background transitions,
+authentic image import and physical-phone checks remain.
 
 See [the Android importer validation](status/WWHD_NATIVE_IMPORT_2026-10-15.md#android-app-integration-candidate-october-15-2026)
 for the exact evidence and input-adapter limits. These import checks do not

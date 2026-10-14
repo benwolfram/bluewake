@@ -226,8 +226,10 @@ final class HDImport {
                                 ? read + " of " + total + " files, " + count + " textures so far" : stage));
             } catch (OperationCanceledException ex) {
                 result = new String[] {"cancelled", "", "0", ""};
+                cleanupFailed = ex.getSuppressed().length != 0;
             } catch (OutOfMemoryError ex) {
                 result = new String[] {"failed", "", "0", "There was not enough memory to finish the import."};
+                cleanupFailed = ex.getSuppressed().length != 0;
             } catch (Exception ex) {
                 result = new String[] {cancel.isCanceled() ? "cancelled" : "failed", "", "0",
                         ex.getMessage() != null ? ex.getMessage() : "The selected files could not be read."};
