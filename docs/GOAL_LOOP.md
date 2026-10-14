@@ -72,7 +72,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   [#337](https://github.com/chrissotraidis/bluewake/pull/337) stays draft: feedback asks for the correct Mac/mobile
   entry paths and less duplication.
   [#346](https://github.com/chrissotraidis/bluewake/pull/346) now isolates gallery alignment with no runtime dependency;
-  Windows/Linux gameplay checks are supplied, and Mac review and fresh CI are next.
+  Windows/Linux gameplay checks and both CI builds pass; the fresh Mac module is compiling for its visual check.
   [#338](https://github.com/chrissotraidis/bluewake/pull/338) retains the opt-in crop and its RecompCore#37 dependency;
   it still needs Mac validation and a separate runtime decision.
 - **Safe startup disables HD effects** in merged [#343](https://github.com/chrissotraidis/bluewake/pull/343), after green Windows/Linux CI.
