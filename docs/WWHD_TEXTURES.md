@@ -501,3 +501,47 @@ allows a read-only descriptor to be a pipe. Image imports need a checked,
 seekable source or a cancellable local staging copy; they must not request
 write access merely to obtain seeking. Folder traversal, key access, cancellation,
 storage exhaustion and activity recreation remain integration checks.
+
+
+### Android app integration candidate (October 15, 2026)
+
+The local `codex/android-hd-import` branch combines the unmerged Android port
+(#93 at `42610f2`) with #315 at `254195d` to prepare the hookup separately.
+It does not change `main`, the port's performance gate or any download.
+
+The menu now offers **Mods › Wind Waker HD Textures › Import from Wind Waker HD…**.
+Players choose a decrypted folder, or an image and transient key files. The
+job owns read-only document access until native conversion and cleanup finish.
+A seekable image uses a private alias to its retained descriptor; a pipe is
+copied with cancellation checks. Folder imports stage only the resource types
+the shared importer reads. Cancel and backgrounding request cleanup while the
+progress screen holds the game; completion waits for an active activity.
+Only a completed pack is saved as the selected next-launch folder. Existing
+PNG/DDS installations continue to use their own GZLE01 folder.
+
+Validation so far: the complete Android Java shell compiles, and the production
+ARM64 `libmain.so` links with NDK r29/API 33 and the approved RecompCore `57123c6`.
+Its importer JNI entry points are exported, and its dynamic dependencies are
+Android system libraries. Cross-builds disable host pkg-config by default after
+a Mac zstd package leaked into the first link attempt; the successful build
+compiles the pinned zstd source for Android. The APK packaging code now copies
+the Mbed TLS license used by the image reader; the production APK still needs a
+packaging check.
+
+A generated document provider passed 33 cases on an API 36 ARM64 emulator:
+folder/name validation, size mismatches, key validation, raw/WUX native alias
+reads, reliable-pipe errors and cancellation during query, open, copy and an
+idle pipe. The test package and temporary emulator were removed afterward.
+The production JNI bridge passed 428 assertions on the Mac JVM, including
+16 generated imports and 96 independent PNG checks through ASCII/Unicode paths,
+concurrent/stale session rejection, cleanup and late-cancel success. The same
+428 assertions and 16 imports / 96 PNG checks also pass through JNI in four ART
+processes on a fresh API 36 ARM64 emulator, with output matching the host baseline.
+The temporary emulator was then stopped and removed. Complete Files/menu
+interaction, activity recreation, physical-phone memory and authentic-disc
+import remain to be established.
+
+Reproduce the generated adapter check with
+`python3 tests/wwhd_android_inputs_test.py --serial emulator-NNNN` on an explicitly
+selected emulator; omitting `--serial` builds the test APK only. The JNI harness
+is `tests/wwhd_android_native_test.py`. Both use generated inputs, not game data.

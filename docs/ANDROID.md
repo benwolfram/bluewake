@@ -222,3 +222,18 @@ does (`runtime/host/src/settings_menu.h`), `cmake/composite` accepts extra sourc
 
 The Android port was written with substantial AI assistance (Claude), like the rest of the project; the status
 above records what was checked, and on what.
+
+
+## Native HD import integration in progress
+
+The local `codex/android-hd-import` candidate adds **Mods › Wind Waker HD Textures
+› Import from Wind Waker HD…**, using the same importer as the other builds.
+It combines this open port with draft #315; it is not in the current port PR
+or a released APK. Folder/image selection, transient key files, cancellation
+and next-launch pack selection are wired up. The Java shell compiles, the full
+native app links, and generated provider checks pass on an emulator. Real
+Files/menu interaction and phone memory/lifecycle checks still remain.
+
+See [WWHD_TEXTURES.md](WWHD_TEXTURES.md#android-app-integration-candidate-october-15-2026)
+for the exact evidence and input-adapter limits. These import checks do not
+establish gameplay speed or change the port's performance acceptance gate.
