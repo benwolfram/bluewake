@@ -322,3 +322,23 @@ temporary output archives and all task AVDs were removed. The final replay
 followed corrections to two comparison-harness errors; no production fix was
 needed. Actual Files/menu use, activity lifecycle, physical-phone memory and
 an authentic WUD/WUX comparison remain open.
+
+### Removal failures and complete-pack comparison (`71642ec`, October 15)
+
+The native core at `5fbb596` rejects an import if a conflicting texture or superseded mipmap cannot be
+removed. The generated A/B conflict plus independent C fixture reproduces the earlier false success; the
+fixed synchronous and threaded cases pass under ASan/UBSan. The mipmap-removal check is source-reviewed,
+not separately fault-injected. Windows and Linux CI both pass at `5fbb596`.
+
+A fresh optimized Mac import after this fix produces all 3,546 keys, 33,861 files and 33,859 PNGs
+byte-identical to the earlier complete pack. The 124 conflicts, 17 unsupported entries and report metadata
+apart from the creation time match. HD inputs, GameCube disc, baseline and tested binary are unchanged.
+This is a decrypted-folder correctness check under concurrent build load, not a speed measurement or an
+authentic WUD/WUX image check.
+
+The full-input Debug ASan/UBSan attempt hit a 300-second limit. Killing it left 12,537 files in its private,
+owned staging directory, which was then removed after confirming the process had exited and no pack was
+published. The completed full-pack comparison used Release optimization; the targeted failure suite retains
+its sanitizer evidence. This confirms the separate forced-process recovery gap. Work on owned-staging
+recovery is underway in #315; it is not included in the `5fbb596` result. Android input-cache recovery is a
+separate concern from output-pack staging.
