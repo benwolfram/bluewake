@@ -12,6 +12,23 @@ activity, input and audio), and a touch overlay stands in for a controller.
 
 ## Status
 
+The port remains under review in [#93](https://github.com/chrissotraidis/bluewake/pull/93).
+As of October 15, the latest Fold 7 cool-start result is **90.4% speed at Outset's pier**
+(136.1 M instructions per retrace, reported October 13). The alternating cool-start
+baseline/behaviour-timing comparison is unfinished; the timing run taken on a warm
+phone cannot establish full speed. The newly reordered Mods menu and controller D-pad
+setting still need phone checks. Native HD import is being integrated separately in
+[draft #347](https://github.com/chrissotraidis/bluewake/pull/347); build and generated
+emulator results do not establish phone usability or memory acceptance.
+
+On October 8, LiquidAzir checked saving and loading, card backup/restore, Dolphin
+save import, the menu and touch-layout editor, log sharing, and controller
+connect/disconnect on both Fold 7 screens using copied saves. Actual texture-pack
+installation, Remove Disc Image, folding mid-game, other devices/GPUs and later-game
+play remain unverified. Screen recording can cause Vulkan device loss ([#238](https://github.com/chrissotraidis/bluewake/issues/238)).
+
+### Earlier build and thermal measurements
+
 Brought up on 2026-09-30 on one device, a Samsung Galaxy Z Fold 7 (Snapdragon 8 Elite, Adreno 830, Android 16),
 from a Redump-verified `.rvz` converted to ISO with Dolphin, built on a Windows 11 PC (i9-13900K) with NDK r29:
 
@@ -60,8 +77,8 @@ So on a phone, power is speed: the Android build asks for a 60 Hz display (not 1
 lowering the render resolution (the GPU was 72 percent busy at 2x) or playing unplugged keeps the limit higher for
 longer.
 
-Not yet tried: saving and reloading a game on Android, other devices, Android versions and GPUs (Mali, older
-Adreno), game controllers on Android (they go through SDL, as on Windows), the HD texture packs, and the later game.
+These September/October 4 measurements describe those earlier builds. Use the current
+status above and [PERFORMANCE.md](PERFORMANCE.md) for the later optimization work.
 
 ## What you need
 

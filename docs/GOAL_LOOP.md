@@ -61,7 +61,7 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   from generated WUX metadata produced nine PNGs matching the CLI, resumed gameplay and preserved the copied
   card. This is not an authentic full-disc check. Remaining: authentic-disc comparison,
   Android integration, Windows/Linux interactive import, iPhone/iPad import/memory and optional fallback packs.
-  Windows/Linux CI passed at `ea31b24`. The next cancellation update reaches scans, disc/archive/PNG work and
+  Windows/Linux CI passed at `254195d`. The cancellation update reaches scans, disc/archive/PNG work and
   publication; generated cancellation and buffered-close failures preserve existing packs. The iOS operation
   has Cancel and bounded background cleanup, with six Foundation lifetime cases passing. Mac tests and the full
   pack comparison pass; UIKit/Files interaction remains unverified. Forced-process staging recovery is still
@@ -91,6 +91,9 @@ The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
   with completed-pack selection and cancellation. Its full native app links with the approved runtime pin,
   the Java shell compiles, and 33 generated provider cases pass on an API 36 emulator. The JNI bridge also
   passes 428 assertions and 16 imports / 96 PNG checks on both the Mac JVM and Android ART.
+  The production packaging method also passes a source-only APK check on the Mac: Java classes, native exports,
+  licenses, synthetic signing and 16 KiB ZIP/ELF alignment. API 36 startup reaches the expected missing-game-data
+  diagnostic. That blocks menu use; execution used 4 KiB pages and is not a gameplay or 16 KiB-kernel check.
   Files/menu/lifecycle and phone memory checks remain.
   This candidate is not part of #93 or `main`; these importer results say nothing about gameplay speed.
 - **Texture status (#336):** the renderer's registered count and a separate next-launch notice are the agreed
