@@ -87,9 +87,8 @@ remaining work. Compatible artwork comes from each player's own disc and is sepa
 
 ## 3. Ship small and often
 
-**Current owner decision:** hold 0.8.0 for the HD work and its acceptance checks. This loop prepares and checks
-changes; it does not publish a release. Chris decides when the hold ends. The policy below applies after that
-decision.
+**For now:** 0.8.0 waits for the HD work and its checks (Chris, October 12). Until Chris ends that hold, changes
+are prepared and checked but not released; the policy below applies after it.
 
 - Release when a fix is proven on the platform it affects. Don't wait to batch.
 - Each "What's new" line leads with what the player notices, then the evidence: a measured number, the issue
@@ -129,8 +128,8 @@ What Wind Waker HD Recomp players get that BlueWake players ask for, in rough or
 | Feature | BlueWake today | Notes |
 | --- | --- | --- |
 | Copy performance report | Session log only | Section 5 |
-| Gyro aiming | Optional controller gyro aiming is in `main` on desktop and iOS, off by default (#188) | Physical gyro-controller acceptance remains; Android and DSU support are not established |
-| 120 and 240 FPS, matched to the display, "keep game speed" | 60 and 120 | Smooth Motion's flicker (#136) and cost on small CPUs come first |
+| Gyro aiming (DualSense, Switch Pro, Steam Deck, a DSU server) | In `main`, off by default (#302, #304); not yet tried with a gyro controller | SDL3 reads controller gyros; aim in first person like the Wii U GamePad |
+| 120 and 240 FPS, matched to the display, "keep game speed" | 60 and 120; on desktop also Match the display, up to 240 | Smooth Motion's flicker (#136) and cost on small CPUs come first |
 | A mod manager with installable packs that replace game files | Built-in mods and texture packs only (#152) | Needs a file replacement path in the disc reader |
 | HD textures from the player's own Wii U game, from the menu | Native importer in draft #315; Android integration in draft #347 | Section 2 and [WWHD_TEXTURES.md](WWHD_TEXTURES.md) |
 | Crash recovery: automatic save states plus recorded input, so a crash can be replayed | Save states exist | Turns crash reports into reproductions |

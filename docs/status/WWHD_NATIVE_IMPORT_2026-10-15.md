@@ -409,3 +409,13 @@ The generated fixture package is removed afterward. After the private APK
 verified its source hashes, these changes were integrated for review with #315
 at `3b13534`. The baseline app UI check above predates this recovery overlay;
 its production Files/menu and activity-lifecycle behavior remain unverified.
+
+## Later on October 15
+
+pdale-boop imported his own dump's `content` folder through the #315 menu on Linux (Arch, X11, NVIDIA,
+Vulkan) at `3b13534`, from a path with spaces and Japanese characters: 3,546 keys and 33,859 PNGs, and all
+3,546 registered after a restart. Cancelling kept his previous pack selected and left no partial pack
+([his report](https://github.com/chrissotraidis/bluewake/pull/315#issuecomment-6180349586)). On the iPhone 17e
+simulator, a test app running the production iOS menu and importer imported generated inputs through Files as
+a folder and as a WUX image with keys; it found a stale "No pack installed yet" in Mods after an import, fixed
+in #315 (`85f079e`).

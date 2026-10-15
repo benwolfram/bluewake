@@ -56,11 +56,18 @@ The app needs no Python.
 
 The native importer implements the script's matching and conversion: from
 the supplied decrypted HD folder and GameCube disc it makes the same 3,546
-textures, in about 30 seconds on an M3 Max. The image reader passes generated
-encrypted-disc checks, including a Mac menu import. An authentic WUD/WUX
-comparison, Windows/Linux interactive import and iPhone/iPad Files-provider,
-memory and lifecycle checks remain open. These are distinct from build and
-simulator fixture results below.
+textures, in about 30 seconds on an M3 Max. On Linux (Arch, X11, NVIDIA),
+pdale-boop imported his own dump's `content` folder from the menu, from a path
+with spaces and Japanese characters: 3,546 keys and 33,859 PNGs, the same counts
+as the Mac, and the restart loaded all 3,546. Cancelling an import kept his
+previous pack selected and left no partial pack. The image reader passes
+generated encrypted-disc checks, including a Mac menu import. On the iPhone 17e
+simulator, a test app running the production iOS menu and importer (without
+the game) imported generated inputs through Files, as a folder and as a WUX
+image with key files; cancelling a key picker kept the other choices. An
+authentic WUD/WUX comparison, a Windows interactive import, and iPhone/iPad
+hardware, memory and lifecycle checks remain open. These are distinct from
+build and simulator fixture results below.
 
 The output follows the app's data folder, including Linux portable mode and
 an explicitly selected desktop settings location.
@@ -286,3 +293,5 @@ with a valid ownership marker; completed packs and older unmarked folders stay
 untouched. Cleanup failures are reported. A stalled OS read can still delay
 cancellation; app-level force-close/retry and mobile input-copy recovery remain
 separate from the shared output recovery checks in the dated validation record.
+The import also leaves an empty `.bluewake-wwhd-import.lock` in `Load/Textures` by design: it keeps two
+imports from writing there at once, and can be deleted while BlueWake isn't running.
