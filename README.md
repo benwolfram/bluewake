@@ -1,7 +1,7 @@
 # BlueWake
 
 <p align="center">
-  <strong>The Legend of Zelda: The Wind Waker, running natively on iPhone, iPad, Mac, Windows and Linux.</strong><br>
+  <strong>The Legend of Zelda: The Wind Waker, running natively on iPhone, iPad, Mac, Windows, Linux, and Android.</strong><br>
   A static recompilation of the GameCube original, with touch controls, controller support and mods.
 </p>
 
