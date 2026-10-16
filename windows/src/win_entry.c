@@ -106,6 +106,7 @@ __declspec(allocate(".CRT$XIU")) __attribute__((used)) static int(__cdecl* bw_cp
 static char g_exe_dir[MAX_PATH * 4];
 static char g_data_dir[MAX_PATH * 4];
 static char g_log_path[MAX_PATH * 4];
+static int g_portable;
 
 static int file_exists(const char* path) {
     DWORD attributes = GetFileAttributesA(path);
@@ -130,6 +131,35 @@ static void bw_default_path(const char* name, const char* dir, const char* relat
     bw_default(name, path);
 }
 
+// Aurora's own files: controller button remaps (*.controller), keyboard
+// bindings, the controller port choice and imgui.ini. They follow
+// DOL_AURORA_USER_DIR into the portable folder now (#64); before, they went to
+// %APPDATA%\BlueWake even in portable mode. Copy the ones the portable folder
+// doesn't have yet, so remaps made there carry over. Nothing is moved or
+// replaced.
+static void bw_copy_aurora_files(void) {
+    static const char* const names[] = {"*.controller", "keyboard_bindings.dat", "controller_ports.dat", "imgui.ini"};
+    const char* appdata = getenv("APPDATA");
+    if (appdata == NULL || appdata[0] == '\0')
+        return;
+    for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
+        char pattern[MAX_PATH * 4];
+        snprintf(pattern, sizeof pattern, "%s\\BlueWake\\%s", appdata, names[i]);
+        WIN32_FIND_DATAA found;
+        HANDLE find = FindFirstFileA(pattern, &found);
+        if (find == INVALID_HANDLE_VALUE)
+            continue;
+        do {
+            char from[MAX_PATH * 4], to[MAX_PATH * 4];
+            snprintf(from, sizeof from, "%s\\BlueWake\\%s", appdata, found.cFileName);
+            snprintf(to, sizeof to, "%s%s", g_data_dir, found.cFileName);
+            if (CopyFileA(from, to, TRUE))
+                fprintf(stderr, "[portable] copied %s from %%APPDATA%%\\BlueWake\n", found.cFileName);
+        } while (FindNextFileA(find, &found));
+        FindClose(find);
+    }
+}
+
 static void resolve_dirs(void) {
     wchar_t wide[MAX_PATH * 2];
     DWORD n = GetModuleFileNameW(NULL, wide, (DWORD)(sizeof wide / sizeof wide[0]));
@@ -147,9 +177,10 @@ static void resolve_dirs(void) {
     snprintf(portable, sizeof portable, "%sportable.txt", g_exe_dir);
     if (override != NULL && override[0] != '\0')
         snprintf(g_data_dir, sizeof g_data_dir, "%s\\", override);
-    else if (file_exists(portable))
+    else if (file_exists(portable)) {
         snprintf(g_data_dir, sizeof g_data_dir, "%suser\\", g_exe_dir);
-    else if (appdata != NULL && appdata[0] != '\0')
+        g_portable = 1;
+    } else if (appdata != NULL && appdata[0] != '\0')
         snprintf(g_data_dir, sizeof g_data_dir, "%s\\BlueWake\\", appdata);
     else
         snprintf(g_data_dir, sizeof g_data_dir, "%suser\\", g_exe_dir);
@@ -458,10 +489,11 @@ static void start_profile(void) {
     fprintf(stderr, "[profile] sampling the game thread into %s\n", g_profile_path);
 }
 
-// Desktop hotkeys: F11 toggles fullscreen (Return, the other half of the usual
-// Alt+Return, is the game's START), F10 Smooth Motion and F9 the frame rate. A keyboard
-// hook on the game thread, which pumps the window's messages, sees them before
-// SDL; Aurora's single event-observer slot belongs to the mouse camera.
+// Desktop hotkeys: F1 or Esc the settings, F2 the HD look, F6 a second save
+// state key, F9 the frame rate, F10 Smooth Motion, and F11 or Alt+Return
+// fullscreen (Return is the game's START). A keyboard hook on the game thread,
+// which pumps the window's messages, sees them before SDL; Aurora's single
+// event-observer slot belongs to the mouse camera.
 static HHOOK g_hotkey_hook;
 
 static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
@@ -474,8 +506,9 @@ static LRESULT CALLBACK hotkey_hook(int code, WPARAM key, LPARAM flags) {
     if (trace)
         fprintf(stderr, "[keys] code=%d vk=0x%02X %s%s%s\n", code, (unsigned)key, down ? "down" : "up",
                 repeat ? " repeat" : "", alt ? " alt" : "");
-    // A key BlueWake handles (win_settings.cpp) is kept from the game: F1, F9,
-    // F10, F11, Esc for the menu, and Alt+Enter, whose Return would be START.
+    // A key BlueWake handles (win_settings.cpp, bw_settings_key) is kept from
+    // the game: F1, F2, F6, F9, F10, F11, Esc, and Alt+Enter, whose Return
+    // would be START.
     if (code == HC_ACTION && down && !repeat && bw_settings_key((unsigned)key, alt))
         return 1;
     if (code == HC_ACTION && key == VK_RETURN && alt)
@@ -487,7 +520,7 @@ static void usage(void) {
     fprintf(stderr,
             "usage: BlueWake.exe [options]\n"
             "  --widescreen       16:9 (the widescreen mod: a wider camera and HUD)\n"
-            "  --aspect A         4:3 (the game's own), 16:10 or 16:9\n"
+            "  --aspect A         4:3 (the game's own), 16:10, 16:9 or 21:9\n"
             "  --smooth           Smooth Motion (experimental): 60 FPS with in-between\n"
             "                     frames; F10 toggles it\n"
             "  --no-smooth        the game's own 30 FPS (the default)\n"
@@ -502,13 +535,16 @@ static void usage(void) {
             "  --safe-mode        Recover startup with HLE audio and mods off\n"
             "  --hle-audio        Fast audio for this session\n"
             "  --lle-audio        run the DSP's own microcode instead of the HLE ucode\n"
+            "  --stage-select-saves  keep saving on after using the stage select (it can\n"
+            "                     leave your file in a state the story never reaches)\n"
             "  --mods LIST        mods compiled into the module, by name\n"
             "  --disc FILE        the disc image to read (default game\\GZLE01.iso)\n"
             "  --module FILE      the translated game module (default gGZLE01_recomp.dll)\n"
             "Keyboard: arrows D-pad, J A, K B, U X, I Y, W/A/S/D stick,\n"
             "H/F/T/G C-stick, E/R L/R, Q Z, Return START. Game controllers work too.\n"
             "Mouse: click the game, then move it to turn the camera; Esc releases it.\n"
-            "F1 or Esc settings, F11 or Alt+Enter fullscreen, F10 Smooth Motion, F9 frame rate.\n"
+            "F1 or Esc settings, F11 or Alt+Enter fullscreen, F10 Smooth Motion, F9 frame rate,\n"
+            "F5 save state, F8 load it, F2 HD look, F7 stage select.\n"
             "The settings menu saves to %%APPDATA%%\\BlueWake\\settings.ini (with portable.txt beside\n"
             "BlueWake.exe, to its user folder); options given here win for the session.\n");
 }
@@ -580,6 +616,8 @@ int main(int argc, char** argv) {
             _putenv_s("BLUEWAKE_MOUSE_CAMERA", "0");
         } else if (strcmp(a, "--safe-mode") == 0) {
             _putenv_s("BLUEWAKE_SAFE_MODE", "1");
+        } else if (strcmp(a, "--stage-select-saves") == 0) {
+            _putenv_s("BLUEWAKE_STAGE_SELECT_SAVES", "1");
         } else if (strcmp(a, "--hle-audio") == 0) {
             _putenv_s("BLUEWAKE_DSP_MODE", "hle");
         } else if (strcmp(a, "--lle-audio") == 0) {
@@ -619,12 +657,15 @@ int main(int argc, char** argv) {
     snprintf(states, sizeof states, "%sstates", g_data_dir);
     _mkdir(states);
     bw_default("BLUEWAKE_STATE_DIR", states);
-    // Aurora's shader and pipeline caches (dawn_cache.db, pipeline_cache.db) go
+    // Aurora's shader and pipeline caches (dawn_cache.db, pipeline_cache.db)
+    // and its own files (controller remaps, keyboard bindings, imgui.ini) go
     // with the rest of the player's data: the same %APPDATA%\BlueWake as before,
     // or the user folder in portable mode (#64), which otherwise still filled
-    // %APPDATA%. Aurora's own imgui.ini follows its userPath, which GXRuntime
-    // doesn't expose yet.
+    // %APPDATA%.
     bw_default("DOL_AURORA_CACHE_DIR", g_data_dir);
+    bw_default("DOL_AURORA_USER_DIR", g_data_dir);
+    if (g_portable)
+        bw_copy_aurora_files();
     char module[MAX_PATH * 4];
     const char* module_env = getenv("BLUEWAKE_COMPOSITE");
     if (module_arg != NULL)

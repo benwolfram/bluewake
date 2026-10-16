@@ -1,37 +1,46 @@
 # Mods
 
-BlueWake has a **Mods** section in the in-game ⋯ menu with four mods. Each takes effect the next time
-BlueWake starts, and none of them changes your saves.
+BlueWake has a **Mods** section in the in-game ⋯ menu on iPhone and iPad, and a **Mods** tab in the F1 menu
+on Mac, Linux and Windows. **Wind Waker HD textures** comes first in it on every build. Each mod takes
+effect the next time BlueWake starts, and none of them changes your saves.
 
 | Mod | What it does | What you need |
 | --- | --- | --- |
 | Widescreen 16:9 | The community 16:9 code (Dolphin's GZLE01 Gecko code): a wider field of view with the HUD placed for 16:9, letterboxed on a 4:3 iPad | Nothing; it is built in |
 | Widescreen 16:10 | The same code with its aspect-dependent values recomputed for 16:10 (Mac displays, most iPads' shape is closer to it); one widescreen mod at a time | Nothing; it is built in |
-| HD Texture Pack | Replaces the game's textures with a Dolphin-format pack, such as [Hypatia's HD pack](https://forums.dolphin-emu.org/Thread-hypatia-s-tloz-the-wind-waker-hd-pack-v2-0001a) | The pack's `tex1_…` images in `Documents/BlueWake/Load/Textures/GZLE01` |
+| Widescreen 21:9 | The same code recomputed for 21:9 ultrawide desktop displays (Windows, Linux, Mac) | Nothing; it is built in |
+| HD Textures | Replaces the game's textures with a Dolphin-format pack, such as [Hypatia's HD pack](https://forums.dolphin-emu.org/Thread-hypatia-s-tloz-the-wind-waker-hd-pack-v2-0001a) or [the textures from your own Wind Waker HD disc](WWHD_TEXTURES.md) | The pack's `tex1_…` images: on iPhone and iPad in `Documents/BlueWake/Load/Textures/GZLE01` (Install Texture Pack… copies them there); on the desktop, any folder picked with Choose texture pack folder… |
 | Better Wind Waker | [Better Wind Waker](https://github.com/WideBoner/betterww)'s quality-of-life changes from Wind Waker HD, each its own setting: Swift or Brisk Sail, instant text, faster rolling, grappling, block pushing, climbing and crawling, Tingle Chests without the Tuner, an unrestricted boat, no song replays, turning while swinging, a faster Ballad of Gales, skipping the opening movie, an inverted camera, a revealed sea chart | Nothing; it is built in |
 
 On the iPad, `Documents/BlueWake` is **On My iPad › BlueWake › BlueWake** in the Files app.
 
 ## Installing
 
-**Widescreen:** turn on *Widescreen 16:9* or *Widescreen 16:10* (turning one on turns the other off) and
+**Widescreen:** on iPhone and iPad, turn on *Widescreen 16:9* or *Widescreen 16:10* (turning one on turns
+the other off); on Mac, Windows and Linux, pick 16:10, 16:9 or 21:9 in **F1 › Mods › Widescreen**. Then
 restart BlueWake. The 16:10 code is generated from the 16:9 one by `scripts/mods/widescreen_aspect.py`:
 each value it changes (the camera aspect, which also widens the game's view culling, the 2D bounds, HUD
 and map positions, a few instruction immediates) is interpolated between the game's 4:3 value and the
-16:9 value, and the three HUD constants it loads from the game's pool take the nearest pool value. On the
-Mac host, `BLUEWAKE_ASPECT=16:10` or `16:9` selects the mod and the frame buffer shape together. At the default 3× render resolution 16:9
+16:9 value, and the three HUD constants it loads from the game's pool take the nearest pool value. The 21:9
+code is generated the same way, with the 16:9 change carried on 2.25 times as far (its pool constants land
+within half a pixel); the HUD elements the 16:9 code leaves in place stay where the 4:3 game puts them, so
+at 21:9 they sit further in from the edges. On the desktop hosts, `BLUEWAKE_ASPECT=16:10`, `16:9` or
+`21:9` (the menu's aspect setting, or `--aspect`) selects the mod and the frame buffer shape together.
+At 21:9 the picture is no taller than 4:3's, so the follow camera starts one wheel notch further back
+(`BLUEWAKE_CAMERA_DISTANCE`, 1.12 there and 1 otherwise; the wheel still moves it from there). At the default 3× render resolution 16:9
 renders 2560×1440 and 16:10 2304×1440 (the 4:3 picture's height, widened), so the game's letterbox bars line up with the scene;
 if an older device struggles, 2× renders 1707×960.
 
 **HD textures:** download a Dolphin-format pack for GZLE01. On the iPad, Hypatia's *Android-Lite* build
 (3× resolution, about 530 MB of PNG files) fits comfortably; the full-size PC builds need several GB of
 memory. Copy the folder of `tex1_…` images (in Hypatia's pack, the `GZL` folder) into
-`Load/Textures/GZLE01`, turn on *HD Texture Pack* and restart. Subfolders are searched, `_mipN`
-sidecar mipmaps are used, and PNG and DDS files both work. The menu shows how many textures it found.
+`Load/Textures/GZLE01`, turn on *HD Textures* and restart. Subfolders are searched, `_mipN`
+sidecar mipmaps are used, and PNG and DDS files both work. The menu shows how many textures it found. On the desktop, **Choose texture pack folder…** uses a
+pack where it is, with nothing copied.
 
 You can also [import compatible textures from your own Wii U Wind Waker HD
 disc](WWHD_TEXTURES.md). The local importer creates a Dolphin-format pack;
-select it with the same HD texture pack setting.
+add it the same way, in **Mods › Wind Waker HD textures**.
 
 **Better Wind Waker:** turn on *Better Wind Waker*, pick its settings in **⋯ › Mods › Better Wind Waker
 Settings** and restart. Each of Better Wind Waker's settings is a switch of its own, on or off by Better
@@ -46,7 +55,7 @@ not included (an HD texture pack can supply them); its name stays "Sail". On the
 
 ## Forest Water Challenge assistance
 
-On Mac, **Settings › Gameplay › Forest Water Challenge** has two independent
+On Mac, Windows and Linux, **F1 › Gameplay › Forest Water Challenge** has two independent
 options, both off by default and separate from Better Wind Waker:
 
 - **Keep watered trees when time runs out:** Forest Water still expires and

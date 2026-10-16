@@ -1,163 +1,112 @@
 # Windows tasks
 
-Work that needs a Windows PC, in priority order. Elliott owns Windows; anyone with the hardware can help.
-Read [AGENTS.md](../AGENTS.md) first. One pull request per task, results in the linked issue.
+Work that needs a Windows PC. Elliott owns Windows; anyone with the hardware can help. Read
+[AGENTS.md](../AGENTS.md) first. One pull request per task, results in the linked issue.
 
 **You need:** Windows 10 or 11 (x64), a CPU with AVX2, a Direct3D 12 GPU, your own USA `GZLE01` revision 0
 disc, and the build tools in [BlueWake on Windows](WINDOWS.md#what-you-need).
 
-**Where things stand (October 5, 2026):** BlueWake 0.5.0 is the published Windows download, built from
-`main` (`0d1f821`) and checked on one PC: [Windows build for 0.5.0](status/WINDOWS_BUILD_0.5.0.md). Everything
-in the table below is in it. Still to do by hand: the camera-stick invert, "Quit the game" and the option
-notes, mouse buttons, and a controller.
+**Where things stand (October 15, 2026):** 0.7.0 is the Windows download, built on Chris's PC (Ryzen 7 5700U)
+from the release commit: a 27-minute title session with draw fusion on, D3D12 and no fatal lines, but nothing
+played by hand ([Windows build for 0.7.0](status/WINDOWS_BUILD_0.7.0.md)). pdale-boop checked 0.6.0 on a second
+PC (i5-12600KF, RTX 5070 Ti) by ear and with controllers ([his checks](status/WINDOWS_CHECKS_0.6.0_2026-10-07.md)).
+The 0.5.0 checks are in [Windows build for 0.5.0](status/WINDOWS_BUILD_0.5.0.md).
+New builds from `main` now use behaviour timing (#335, approved by Chris); the 0.7.0 download is unchanged.
+Contributor checks below identify candidate builds separately from releases.
 
-## Shipped in 0.5.0: checks and remaining verification
+## 1. In `main`, for the next Windows build
 
-These changes shipped in 0.5.0. Results below describe the original release checks; reporter updates
-and remaining defects are tracked in [TECH_DEBT.md](TECH_DEBT.md). New unreleased changes belong in
-"In `main`, waiting for a Windows build" below.
+The merged Picto recognition integration (#341) includes #334 and RecompCore#36. The candidate passed all three Lenzo
+photos on pdale-boop's Windows PC. Mac evidence and the separate first-use shader-cache follow-up
+(RecompCore#39, not pinned) are in [the validation record](status/PICTO_RECOGNITION_2026-10-15.md).
+Gallery alignment (#346, merged as `dc45b43`) is checked separately below; the opt-in crop (#338 / RecompCore#37)
+still needs a runtime decision. Native HD import remains draft #315: Windows/Linux CI, audit and attribution
+passed at `3b13534`, and pdale-boop completed a full Linux import from his own dump on October 15 (cancelling
+kept the earlier pack; after a restart all 3,546 textures loaded). Windows interactive import is still
+unchecked; Android #347's API 36 app import and recovery results do not replace that check
+([current status](GOAL_LOOP.md#where-things-stand-on-october-15)).
 
-| Change | Issue | What to check | Windows result, October 5 |
-| --- | --- | --- | --- |
-| Pictobox photos no longer freeze the picture | #13 | Take a Pictobox photo; the game keeps drawing. | Not tested |
-| Swap A and B, Swap X and Y | #55 | F1 › Controls; the swap takes effect at once. | Not tested |
-| Camera no longer flips direction in water | #73 | Swim and turn the camera with the stick and the mouse. | Not tested |
-| Controller button remapping | #66 | F1 › Controls › Controller buttons: change a button, confirm the game follows it, restart, confirm it was kept. | Not tested (no controller) |
-| Portable mode: `portable.txt` beside `BlueWake.exe` keeps saves, settings and logs in a `user` folder beside it | #64 | With `portable.txt`, the log's `[windows] ... data=` line points to the `user` folder and saves land there; without it, `%APPDATA%\BlueWake` as before. | Partial: Aurora's caches and `imgui.ini` still go to `%APPDATA%\BlueWake` |
-| Jump and Run off by default (0.4.0 has them always on) | #71 | A new install has no jump on Space or the left bumper; F1 › Mods › Jump and Run turns both on after a restart. | Default off; not pressed live |
-| Smooth Motion off by default, and the "Smooth Motion paused" counter | #79 | A new install runs at 30 FPS; turning Smooth Motion on shows the counter when it pauses. | 30 FPS by default; counter not tested |
-| `[music-stream]` log line | #65, #97 | A session log shows the line when the intro music starts. | Pass |
-| Cutscene sound log: `[demo]`, `[demo-sound]`, `[audio-lost]` | #65, #97 | Play to the first cutscene; the log has a `[demo] end` line with `cues`, `sounds` and `missing`. | Pass: intro `cues=4 sounds=4 missing=0` |
-| "Quit the game" in the settings menu; notes under Brisk Sail, Unrestricted boat and Invert camera left and right | Discord | F1: "Quit the game" next to Close ends BlueWake (and the next launch shows no recovery message); with a controller, the d-pad reaches it. F1 › Mods: the three options have a line saying what they do. | Not tested on 0.5.0 (F1 opens; menu clicks didn't reach the window in the test session) |
-| "Exact" sound no longer crashes at launch (fixed October 1, after 0.4.0) | #58 | F1 › Sound and files › Exact, restart: the game starts and plays sound. | Pass: started and ran with Exact on, no crash |
-| A launch that crashes is recovered: the next launch starts with Fast sound and mods off, backs up `settings.ini` and says so in plain words | #58 | Turn on a mod, end `BlueWake.exe` in Task Manager within a few seconds of starting, start it again: the message shows, a `settings.ini.before-safe-mode-*` file is beside `settings.ini`, and the next normal launch has no message. | Pass on 0.5.0: message, backup with the mod on, no message next launch |
-| The camera-stick inversion now comes from a header shared with the Mac (no change intended on Windows) | #73 | F1 › Controls › "camera stick left and right inverted" on: the camera turns the same inverted way on land, swimming and on the boat. | Not tested (no controller) |
-| Mouse buttons and keyboard keys can be changed | Discord | F1 › Controls › Mouse buttons: set the right button to B; click the game, right-click, and Link uses his sword. Keyboard keys for the GameCube buttons: give A another key; it works in game, J no longer does, and both survive a restart (`mouse_buttons=` and `key_map=` in `settings.ini`). | Keys pass on 0.5.0 (L as A, J off); mouse buttons and the menu by hand not tested |
-| `gamecontrollerdb.txt` beside the saves adds controller mappings | #61 | Put the SDL_GameControllerDB file in `%APPDATA%\BlueWake`; the session log has `[pad] N controller mappings from ...` with N above 0, and a controller that worked before still works. | Partial on 0.5.0: `[pad] 578 controller mappings`; no controller to confirm |
-| Older CPUs get a message instead of nothing | #77 | Task 2 below: `sde64 -nhm -- BlueWake.exe` shows "BlueWake can't run on this processor"; a normal launch is unchanged. | Pass on 0.5.0 under SDE `-nhm`; `-hsw` not run |
-| The first-launch disc prompt offers .rvz only when `nodtool.exe` is beside `BlueWake.exe` | #120 | From the release zip (no `nodtool.exe`), with no disc chosen yet: the message says .iso or .gcm and how to convert an .rvz in Dolphin, and the picker lists only *.iso and *.gcm. A self-built folder still offers .rvz. | Pass on 0.5.0 from the zip; self-built folder not checked |
-| Portable mode keeps Aurora's shader and pipeline caches in the `user` folder too | #64 | With `portable.txt` and no `%APPDATA%\BlueWake` folder before: after a run, `dawn_cache.db` and `pipeline_cache.db` are in `user`. `%APPDATA%\BlueWake` may still appear holding only `imgui.ini` (needs a RecompCore change). Without `portable.txt`, the caches stay in `%APPDATA%\BlueWake` as before. | Pass on 0.5.0; only `imgui.ini` in `%APPDATA%\BlueWake` |
-| Molgera's arena in the Wind Temple has its sand floor (it was black) | #126 | Go through the boss door in the Wind Temple, or load a copy of a save moved there with `scripts/save_set_restart.py IN.gci OUT.gci kazeB 0 0`: the floor is sand, and the session log's `[gx-core] shutdown` line has `array_unresolved=0`. Elsewhere looks as before. | Pass on 0.5.0: sand floor, `array_unresolved=0` |
-
-
-### The second Windows run (added October 5)
-
-If the first BlueWake Windows build was made before these merged (from `c00397e` on, October 5),
-rebuild from `main` and check only these rows of the table above, nothing else again (the 0.5.0 draft, built from `c56d6b6`, has none of them; Exact sound was already checked on it):
-
-1. A launch that crashes is recovered, with the plain message (#58).
-2. The camera-stick inversion from the shared header (#73).
-3. Mouse buttons and keyboard keys can be changed.
-4. "Quit the game" and the three option notes.
-5. Older CPUs get a message instead of nothing (#77, task 2).
-6. `gamecontrollerdb.txt` beside the saves adds controller mappings (#61).
-7. The disc prompt offers .rvz only when `nodtool.exe` is there.
-8. Portable mode keeps the shader caches in the `user` folder (#64).
-9. Molgera's arena has its sand floor (#126).
-
-Results on the 0.5.0 build (`0d1f821`): [Windows build for 0.5.0](status/WINDOWS_BUILD_0.5.0.md). Still to do by hand: items 2, 4, the mouse half of 3, and a controller for 6.
-
-## In `main`, waiting for a Windows build
-
-After 0.5.0: check these on the next Windows build.
-
-For intro audio (#97), wait at the title until its music plays before starting a new scratch file.
-The immediate-entry route can miss the failure. The Mac reproduction and callback-order diagnosis
-are in [the October 6 record](status/TRIAGE_2026-10-06.md#title-to-intro-reproduction-and-callback-ordering).
-The optional automated equivalent uses `BLUEWAKE_PAD_PULSE_ON_TITLE_READY=1`,
-`BLUEWAKE_PAD_BUTTONS=0x0100`, `BLUEWAKE_PAD_TITLE_DELAY=900` and `BLUEWAKE_MAX_RETRACES=3600`
-with separate scratch card/settings/SRAM/cache paths. `[music-dvd]` reports the first four stream
-read completions. This is a reproduction aid, not an audio fix; preserve the session log.
-
-Merged after `0d1f821`, so 0.5.0 doesn't have them. Check only these on the next build:
 
 | Change | Issue | What to check | Result |
 | --- | --- | --- | --- |
-| Opt-in cache-flush fallback for stale Pictobox preview | #13 | Set `$env:BLUEWAKE_CACHE_FLUSH_FALLBACK="1"` and use a copied save. Take a photo, cancel, turn toward a different view and take another without changing rooms. Both regular and Deluxe previews must show the new view; save/reload one photo. Check left-stick selection separately. For a short diagnostic only, set `DOL_GXCORE_TEX_VERIFY=1` and retain the log. Remove both variables afterward. | Matched Mac off/on runs reproduce/repair the second-photo failure. Off by default; iPad and Windows gameplay untested. [Evidence](status/PICTOBOX_CACHE_2026-10-06.md). |
-| Deferred DVD completion for title-to-intro music: on by default on Mac, iPhone and iPad since October 7; Windows still opt-in | #97, related #65 | Launch from PowerShell with `$env:BLUEWAKE_DEFER_DVD_COMPLETION="1"`; wait for the title music, start a new scratch file and listen to the history intro without skipping. Check one later music change, room loading and a copied save-state reload. Keep the session log; it says `[dvd] deferred completion=on (BLUEWAKE_DEFER_DVD_COMPLETION)`. Then without the variable (`off (default)`) for comparison. If it passes, turn it on by default for Windows in `main.c`. | Mac: intro reproduced and repaired with captured audio, save-state reload, Windfall file and room loading, and the Builder's training route (October 6 and 7); physical iPad intro output passes. Windows untested. See [candidate evidence](status/TRIAGE_2026-10-06.md#deferred-completion-candidate). |
-| Stream-state diagnostics include stop/play, decode/buffer and DVD state; the triage script flags brief playback | #65, #97 | Play the silent history intro once without skipping; keep the log through the track stopping. Run `python scripts/triage_session_log.py LOG`. Compare `[music-stream]` state changes and the new fields; a state-4 sample alone is not acceptance. | Pending Windows hardware; Mac build and targeted diagnostics checks recorded in [October 6 triage](status/TRIAGE_2026-10-06.md) |
-| A controller recognized late, or left as player 2, plays as player 1 | #61 | With a controller SDL only knows from `gamecontrollerdb.txt` (in `%APPDATA%\BlueWake`), plugged in before starting: it moves Link. The session log has `[pad] 'NAME' is player 1 (it had no player slot)`. With two controllers, unplug the first; the second takes over (`... (it was player 2)`). An Xbox controller alone behaves as before. | Not built yet |
-| The Wind Waker baton is no longer mirrored | #156 | With a controller and the fast right-stick camera on (the default): take out the Wind Waker and conduct a song; right on the C-stick is right. Swimming and sailing still turn the camera the stick's way (#73). | Not built yet |
-| The builder works with Visual Studio 2022's clang | #153 | Build from `main` with Visual Studio 2022 (clang 19): the output says `note: building the app without its optimization profile (... unsupported instrumentation profile format version)` and the build finishes. With Visual Studio 2026 18.10 or newer there is no note. | Checked on a Mac with LLVM 18, 20 and 22; Windows untested |
-| Option: left stick's up and down inverted when aiming (first person, items) | #154 | F1 › Controls › “Left stick up and down inverted when aiming” on: in first person and with the grappling hook, bow or boomerang, pushing the left stick up aims up. Walking is unchanged, and the setting is kept after a restart (`aim_invert_y=1` in `settings.ini`). Off by default. | Not built yet |
-| Left stick: the game's own dead zone, no jump, full tilt at full travel (RecompCore patch 0159) | #138 | With an Xbox or other controller: tilt the left stick slowly from the center. Link starts to walk smoothly, with no sudden jump; full run comes near the end of the stick's travel; small diagonals aren't snapped to straight lines; Link stands still with the stick at rest. The session log has `[pad] player 1: the game's own stick dead zone`. | Not built yet |
-| Dungeon maps draw their grid and rooms (eight texgens, sixteen TEV stages; RecompCore patch 0157) | #74 | Open the map in any dungeon you've reached (or a copy of a save moved into Dragon Roost Cavern with `scripts/save_set_restart.py IN.gci OUT.gci M_NewD2 0 0`): the grid and the rooms you've seen are drawn, not only the door marker. The session log's `[gx-core] shutdown` line has `unsupported_texgen=0` and `tev_stages_over=0`. A first launch logs `Seeded pipeline cache` and little shader compiling (`pipelines_made` in `[perf-summary]`) in places played before. | Not built yet |
-| iPhone and iPad app built on a Windows PC through PadMint | #100 | On an x64 Windows PC with Visual Studio Build Tools and C++ Clang: build BlueWake for iPhone/iPad with PadMint (`padmint make bluewake ios`), install the IPA with Sideloadly and play to a save. Note the build time. | Windows 11 on ARM (VM) only, October 7 |
+| A resized window keeps drawing (RecompCore#38, patch 0178) | #325 | Direct3D 12 never lost its surface on a resize, but the change also presents "suboptimal" frames and reconfigures a lost surface instead of releasing it. Drag the window's edges for a few seconds, switch fullscreen with F11 and Alt+Enter, and resize with F1 open: the picture follows the window with no black frames, the game keeps running, and the log has no `Surface texture is Lost` lines, or only a few followed by normal play. | Linux (Arch, X11, RTX 5070 Ti, Vulkan): checked by pdale-boop, including F1 open. Windows (Direct3D 12, same PC): pdale-boop played several sessions on `bluewake-next` with #37 and #38, resizing constantly and switching fullscreen on and off: no black frames, stalls or crashes ([#353](https://github.com/chrissotraidis/bluewake/pull/353)). Resizing with F1 open is not yet checked on Windows |
+| Save/load waits for loose REL loads to retire (#350, merged) | #318 / #331 | With the opt-in loose-REL wait enabled and a copied card, request F5 and F8 during a stage load. Saving must defer while a slot is occupied; loading must refuse without replacing the running state. After arrival, normal F5/F8 must work. | Eight extracted-function cases pass on Mac with ASan/UBSan, including multiple/expired slots, timeout, and normal save/load after retirement; the earlier code fails the busy-save regression. Windows/Linux CI pass. Fresh-module Mac R04/R08 rendering checks use host `14bc288`, before #350, and do not test native save/load mid-wait; that remains open. The wait stays off by default. Previously written unsafe snapshots are not repaired. |
+| Safe startup turns the HD look off (#343, merged) | Follow-up to #339 | In a test data folder, save `hd_look=1`, set the `BLUEWAKE_HD_*` per-effect switches, then start with `--safe-mode` or a pending-launch marker. The first `[hd-look]` line and Display switch must be off; F2 must turn every effect on and off again. Check the original settings backup and `hd_look=0` in the reset file. With a failed backup, the file must stay unchanged at startup and the session must still start with HD off. | Mac fixtures and a fresh Metal gameplay check pass: startup off, F2 on/off, backup and copied card unchanged. Windows/Linux CI pass; native Windows/Linux checks remain. [Evidence](status/SAFE_MODE_HD_2026-10-15.md) |
+| The Windows menu like the Mac and Linux one: its buttons, Controls and labels | #320 | F1: no "Play your way" heading; the buttons along the bottom read **Resume**, **Save state (F5)**, **Load latest state (F8)** and **Quit the game** (two rows when the menu is narrow), and each does what it says (Resume and the save buttons close the menu); after a next-launch change the note reads "Some changes take effect at the next launch." with **Restart now** beside it, and the changed settings show "(next launch)". **Sound and files** has only Sound and Your files (no save buttons). **Controls** reads, in order: the swaps, D-pad in menus, Controller buttons, Keyboard keys, the mouse (greyed out while Mouse camera is off), the right stick and aiming, Haptics, then the key table, which now lists F2, F5 / F8 and F7. Labels: **Jump & Sprint**, **Wall climbing**, **Texture filtering**. Each setting still saves and works as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a host-only build of this branch with #331 (over a trained stack build, with `--behaviour-timing`): the checks above, as written |
+| Fullscreen for the session, and a separate "Start in fullscreen" | #320 | F1 › Display: the **Fullscreen** button (now a button, reading "Leave fullscreen" when fullscreen; F11 or Alt+Enter too) switches now; quit and start again: the game opens in a window. Tick **Start in fullscreen (next launch)**, quit and start: it opens in fullscreen (`fullscreen=1` in `settings.ini`). An older `settings.ini` with `fullscreen=1` still starts in fullscreen. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build of the stack (d962881, with `--behaviour-timing`): fullscreen from F11, Alt+Enter or the button lasts for the session, Start in fullscreen decides how it opens, an older `fullscreen=1` starts fullscreen with the box ticked, and Reset the window leaves fullscreen and centres it. Linux: the same split checked on Arch |
+| Save state keys and status line the same on every build: F5 save, F8 load, F9 frame rate, F10 Smooth Motion, F11 fullscreen | #320 | F5 in play: "State saved" shows at the bottom left for a few seconds and a `quick-*.bwstate` appears. F8: "State loaded", and the game is back where it was saved. F8 before any save in a fresh data folder: "No state yet". F6 still saves (unlisted). F1 › Sound and files: the buttons read "Save state (F5)" and "Load latest state (F8)". F9 toggles the frame rate as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build of the stack (d962881, with `--behaviour-timing`): F5 and F6 save with "State saved", F8 loads once, F2, F9, F10, F11 and Alt+Enter show their messages, F7 on the title asks for a file first, the Sound and files buttons read F5 and F8, and the status line and the first-seconds hint share the corner without trouble. Linux: checked on Arch with a trained build |
+| The press that closes the settings menu doesn't reach the game | #320 | With a controller, F1 (or Back), then hold A on **Close** and let go after the menu shuts: Link doesn't act on that A (no talking, no rolling). Same holding the stick: Link doesn't walk until it's let go. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build of the stack (d962881, with `--behaviour-timing`): holding A on **Close** and letting go after the menu shut, Link didn't act. Linux: checked on Arch (B and A held while closing) |
+| The Windows menu with a controller, as on Mac and Linux: the D-pad and the left stick go straight through each tab, LB and RB change tabs, the game's B closes it, the right stick scrolls, left and right move a selected slider | #320 | With a controller, Back opens F1's menu. Without pressing A, the D-pad moves from the tabs through every option to the buttons below, and the left stick does the same (held, it repeats like the D-pad; it doesn't scroll the tab). LB and RB change tabs. Left and right (D-pad or stick) move a selected slider (Sprint speed, Climbing stamina, the stick speeds) a step at a time. The right stick scrolls a tab taller than the menu. B closes the menu, but first closes an open dropdown; with B mapped elsewhere (Controls › Controller buttons) that button closes it, and the game's A chooses. With **Swap A and B** on, the bottom button closes and the right one chooses. In Controls › Controller buttons, setting GameCube B to the button you choose with doesn't close the menu; its next press does. Click the game, then the controller still moves through the menu. The menu has no title bar; the x at the end of the tabs and Esc close it. It opens in the middle and can be dragged and resized with the mouse, but not past the game window's edges. Made narrow, its text and long checkbox labels wrap instead of running off the edge; slider labels sit above the sliders. Nothing reaches Link while it's open or as it closes. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop with a controller on a host-only build of this branch (5a208f5) over a trained stack build (with `--behaviour-timing`): the checks above, as written, including Swap A and B, a custom layout and remapping B with the button that becomes B. Mac and Linux get the shared controller and wrapping code too: compiled here, not run |
+| The Windows menu in the Mac and Linux layout: Display, Gameplay, Mods, Controls, Sound and files; Widescreen in Mods; Smooth Motion one dropdown; a Sprint speed under Jump and Run | #320 | F1: the tabs read Display, Gameplay, Mods, Controls, Sound and files. **Smooth Motion** is one dropdown (Off, 60, 120, Match the display); F10 still turns it on at the rate last chosen and off. Gameplay holds the stage select, Forest Water, Fast transitions and Quick doors, climbing, and **Jump and Run** with **Sprint speed** (1.1–2.0×, greyed out while Jump and Run is off). Mods holds HD textures, then **Widescreen** (a dropdown: Off (4:3), 16:10, 16:9, 21:9, with the restart note), then Better Wind Waker. Each moved setting still saves and shows the restart note and **Restart now** where it did. An older `settings.ini` (`movement_extras=1`, `smooth_motion=1`, `smooth_motion_fps=120`, `aspect=21:9`) loads as Jump and Run on at sprint 1.50×, Smooth Motion at 120, 21:9. Sprint 2.00× (restart): Link runs visibly faster than at 1.50× (`sprint_speed=2.00` in `settings.ini`). | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a host-only build of this branch over a trained stack build (with `--behaviour-timing`): the checks above, as written, with the aspect choice at the top of Display. It moved to Mods › Widescreen afterwards (as on `main` and the iPad), checked again by pdale-boop on a host-only build of #332's branch (with #331): 21:9 chosen in Mods › Widescreen, restarted, the game starts in 21:9 (`aspect=21:9` in `settings.ini`) |
+| Mods › Wind Waker HD textures, first in the Mods tab | #57 | F1 › Mods: the section is at the top with "HD textures", the number of textures in the pack and its folder. **Choose texture pack folder…** opens the Windows folder picker; pick a pack's `GZL` folder and the count and folder change, with the restart note. Restart: the pack loads (`hd_textures=1`, `texture_pack=...` in `settings.ini`). Picking `Load\Textures\GZLE01` itself clears `texture_pack`. | Mac: the same section drew with 3,546 textures for the imported pack, and the Mac folder picker opened, changed the folder and saved it. Windows CI compiles it; not opened on Windows |
+| Developers' stage select toggle | #210 | F1 › Gameplay › Developers' stage select (F7), then restart: holding R while starting a file opens the stage select with English names, and F7 opens it from play. | pdale-boop played it on Windows before merging; not checked on a release build |
+| Option: Swap L and R (the triggers) | #244 | F1 › Controls › “Swap L and R (the triggers)” on: pulling the left trigger raises the shield (R) and the right trigger targets (L), with any custom button layout kept. Restart: it is kept (`controller_swap_lr=1` in `settings.ini`). Off by default. | CI test on Windows and Linux; not pressed on a controller |
+| Option: the D-pad moves the cursor in Items and Quest Status | #245 | F1 › Controls › “D-pad moves the cursor in Items and Quest Status” on: in both screens the D-pad moves the cursor like the stick (diagonals too), the stick still works, and in play the D-pad still opens the sea chart and the rest. The sea chart and dungeon maps keep their own D-pad. Restart: it is kept (`dpad_menus=1` in `settings.ini`). Off by default. | Mac, from a save state: D-pad Up in Items reached the game as a full stick push and moved the cursor as the stick did (identical frames); outside menus the D-pad is unchanged; CI test. Not pressed on a controller |
+| Option: gyro aiming | #188 | With a DualSense, DualShock 4 or Switch Pro controller: F1 › Controls › “Gyro aiming” on. In first person and when aiming the bow, hookshot, boomerang, telescope or Picto Box, turning the controller left turns the aim left and tilting it up looks up, one to one at speed 1x; the right stick still aims too; outside aiming the controller's motion does nothing. “Gyro aim speed” scales it. Restart: kept (`gyro_aim=1`). Off by default. | Compiled; the turn's direction and size unit-tested from SDL's axes; not tried with a controller |
+| On by default since October 12 (Chris's call): lean memory and lean deadlines in the builder, and the lazy overlap watch in the app (the host stops reading the scene's overlap phase at every direct call, and the game module answers the per-call question itself) | #59, #215, #93 | Build from `main` with no options; the build log runs `lean-memory` and `lean-deadlines`, and the session log says `lazy overlap watch: on` and `inline-answer=on`. Play through a door, a cutscene and a load from the sea; nothing should look different. Retraces a second against `$env:BLUEWAKE_LAZY_OVERLAP="0"` at the same spot, and if there is time a build with `--no-lean-memory` | Mac: 13 to 16.5% less game-thread time together, identical checkpoints |
+| Training with the lazy overlap watch on (#297, replaces #281's training setting): the app keeps the full overlap watch until the training opening's player-control milestone, then runs the lazy path, so the profile covers it | #277, #280 | A full trained build from `main` (no options): the training log reaches `control-admitted` and the build finishes; the training playbacks' logs say `lazy overlap watch: on (full until player control)` | Linux (12600KF): trained build passed with the same host change. Mac (M3 Max): trained, 4.4–5.2% faster than #281 at Outset and Dragon Roost Cavern |
+| Builder option `--portable`: puts `portable.txt` in the app folder (portable mode, #64) | #64 | Build with `--portable`: `BlueWake\portable.txt` exists, the builder's last lines say the saves are in `BlueWake\user`, and the game keeps its card, settings and logs there. Rebuild without the option: `portable.txt` and `user\` are still there, untouched | Linux: the same option checked on Arch; Windows package test passes |
+| The Wind Waker HD look: islands on the horizon from further away, ambient occlusion, sun and cloud shadows and edge light outdoors, torch light, a soft distance and bloom (off by default) | #57 | Settings › Display › "Wind Waker HD look" on. Clouds and white highlights glow, the horizon is softer, creases and the ground under Link are a little darker, soft cloud shadows drift over the sea and Link casts a soft sun shadow, with the HUD sharp. Stand at Outset's pier facing open sea, or sail: more islands on the horizon, low at first and rising as you get closer. The log says `[hd-look] distant islands on`. Turn it off and on again in the menu without a restart; restart and it's kept (`hd_look=1` in `settings.ini`). Play a few minutes on the sea: no missing islands close up and no crash. | Mac: 15 island models loaded instead of 7 from an Outset save state, an extra island in a captured frame; not built on Windows |
+| F2 switches the Wind Waker HD look on and off in the game | #108 | Press F2 while playing: the HD look comes on (soft shading, bloom, distant islands) and goes off again at the next press; the menu's checkbox follows, and after a restart the last choice is kept. | Compiled (the Mac menu's side). On Windows, pdale-boop's hotkey check above showed F2's message; the look itself was not checked there |
+| Behaviour timing on by default (#335, Chris approved): every block prepaid, the budget checked at loops and calls | #59, #215 | A fresh build with no options includes behaviour timing; `--no-behaviour-timing` disables it and `--conservative` keeps plain translation. Keep comparing the same scenes when validating the next release candidate | pdale-boop, Windows 11, i5-12600KF / RTX 5070 Ti: trained timing builds checked through menus, the stage/spawn sweeps (test card unchanged), all three Lenzo photos with the separate Picto fix, Windfall and Wind Temple; nothing behaved differently ([evidence](https://github.com/chrissotraidis/bluewake/pull/335#issuecomment-6159363773)). Mac benchmarks and Deck play are in PERFORMANCE.md |
+| The host's per-block checks do less (#242) | #59, #246 | Nothing new to press: the game plays as before. If you benchmark, compare retraces a second with 0.7.0 at the same save state. | Measured on Linux (5 to 8% on slow CPUs, identical game state); not measured on Windows |
+| The cache-flush fallback on by default (`BLUEWAKE_CACHE_FLUSH_FALLBACK=0` turns it off): images the game rewrites in place are read again | #263, #13 | Start BlueWake normally; the log says `[texture-cache] fallback writeback=on`. Open the sea chart and pick three different islands: each shows its own map, in the chart and in Charts. With a copied save, take a Pictobox photo, cancel, turn and take another without changing rooms: the preview shows the new view. | The #263 reporter on Windows (opt-in): every island right, the frame rate and the Pictobox unchanged; Windows 0.6.0 check of the Pictobox passed; Mac: no measurable cost on the game thread |
+| Stage select turns saving off until a restart; F7 asks first; marked cutscenes get their half of the story; `--stage-select-saves` keeps saving on | #251, #250 | With a copy of a saved card and the stage select on: F7 in play shows "Go to the stage select?". Cancel (Esc or B) keeps playing; Go (or F7) opens it. Warp, then pause › Save: "Saving is off because the stage select was used." Quit and confirm the card is unchanged. F7 during a conversation, before warping, does nothing; after warping, F7 leaves a cutscene stuck at its end (Storm Ganon part 2). Pick a (after) cutscene from a before-the-fight file: it plays. A save state (F5) taken after warping, loaded after a restart, still can't save. With `--stage-select-saves`, F7 doesn't ask and saving works. | Played on Windows (RTX 5070 Ti), test card: the question cancels and goes, saving stays off and the card unchanged, the event check holds before warping and F7 leaves Storm Ganon part 2 after, marked cutscenes get their half, the game saves with the flag, the reworded Save message shows, and an F5 state taken after warping, loaded with F8 after a restart, still can't save (card unchanged). Headless: no speed change. |
+| Picto Box photos under widescreen keep their 4:3 shape (`picto_crop=1` in `settings.ini`, off by default) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn, with `picto_crop=1` added to `settings.ini` (`BLUEWAKE_PICTO_CROP=1` also works): the log's `[aspect]` line ends "Picto Box photos cropped to 4:3", and a new photo, from the Picto Box and the Deluxe Picto Box, keeps the shape of what was in the middle of the viewfinder instead of the whole wide view squeezed. Without it, photos are as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`, and the gallery fix) at 2560x1080: photos from both Picto Boxes with the crop at 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build with RecompCore#37's commit: new photos from the Picto Box with `BLUEWAKE_PICTO_CROP=1` at all three, and from the Deluxe Picto Box at 16:9; without it, 16:9 photos are squeezed. Mac: not built or run yet |
+| The Picto Box gallery under widescreen: photos as wide as their frames, and in them (#346, merged `dc45b43`) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn: in the Picto Box gallery the middle photo sits in its frame, and so do the ones beside it, at rest and while sliding. At 21:9 a photo is as wide as its frame (it was squeezed to 77% of it). | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`) at 2560x1080: 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build: 16:9, 16:10 and 21:9. M3 Max/Metal, fresh module, host `14bc288` / runtime `57123c6`: all three photos align at each aspect; left/right navigation endpoints captured, not frame-by-frame animation. All three runs exit 0 with copied cards unchanged ([evidence](status/PICTO_RECOGNITION_2026-10-15.md#gallery-alignment)). |
+| iPhone and iPad app built on a Windows PC through PadMint (#100) | #100 | On an x64 Windows PC with Visual Studio Build Tools and C++ Clang: build BlueWake for iPhone/iPad with PadMint (`padmint make bluewake ios`), install the IPA with Sideloadly and play to a save. Note the build time. | Windows 11 on ARM (VM) only, October 7 |
 
-### Flickering capture (#136)
+## 2. Shipped, still to check by hand
 
-The NVIDIA report is still unreproduced on Mac. Use a copy of the affected save and keep the same
-camera, resolution and original textures. Record the exact BlueWake version/commit, GPU and driver;
-do not delete caches or player data. This is a short comparison, not an hours-long soak:
+| Change | Issue | What to check | Shipped in | Result |
+| --- | --- | --- | --- | --- |
+| Draw fusion (Elliott Tate, RecompCore patch 0166): a tenth of the draws, on for Windows | #86, #137, #59 | Play Outset, Forest Haven and Dragon Roost with Smooth Motion off, then at 60. The log says `[gx] draw fusion on` and, at exit, the draws fused. Look for missing or flickering geometry, wrong colors on models, and broken water or particles. Compare frame rates with `DOL_GX_FUSE=0`. | 0.7.0 | On in the release build; Forest Haven, Dragon Roost and the `DOL_GX_FUSE=0` comparison not played. Played clean on Linux (#215) |
+| Smooth Motion keeps its in-between frames when the game runs slow, on 8 threads or more (patch 0164); the log names the renderer (0163) | #137, #56 | Smooth Motion on at 120 (F1 › Display). Play Outset and the bird scene for two minutes. The log says `[interp-pace] N threads: a slow game keeps its in-between frames` and `[renderer] D3D12` (or Vulkan); there should be no `[interp-pace] ... the game ran below full speed` lines, and the picture shouldn't step down to 30 for seconds after a hitch. | 0.7.0 | Not played |
+| Player 1 follows the controller you press while player 1 is idle; rumble only on player 1 | #155, #190 | A GameCube adapter in PC mode with the controller in port 2: press A at the title; the log says `is player 1 (pressed while player 1 was idle)` and the controller plays. Two controllers: rumble (the Forsaken Fortress launch, or any hit) shakes only the one playing. | 0.7.0 | CI test; the Mayflash adapter confirmed by its reporter (#155); rumble not checked |
+| Pictobox: the left stick picks Yes or No at "keep this picture?" and moves through the gallery, with the fast right-stick camera on | #191, #13 | Take a photo with a controller; at "keep this picture?" push the left stick left and right and choose Yes; open the gallery and move through it with the left stick. Then in the live view, push the left stick up and down: it still zooms. | 0.7.0 | Not checked in game |
+| Optional controller zoom with the right-stick click | #203 | F1 › Controls: enable controller zoom. In the normal follow camera, hold the right-stick click and move the stick down to move the camera farther away, then up to bring it closer. Release after zooming: first person must not open. Tap the click without moving the stick: first person must still open and close. Change the speed, restart, and confirm both settings were kept. Telescope, Picto Box, targeting, sailing and cutscenes must retain their existing controls. | 0.7.0 | Linux build and gesture test pass; not checked on Windows |
+| Portable mode keeps controller remaps, keyboard bindings and `imgui.ini` in the `user` folder (RecompCore patch 0160) | #64 | With `portable.txt` beside `BlueWake.exe`: remap a controller button and change a keyboard key, quit, start again. The remaps are kept, the `user` folder has `imgui.ini` and a `*.controller` file, and no new `imgui.ini` or `*.controller` appears in `%APPDATA%\BlueWake`. If `%APPDATA%\BlueWake` already had remaps, the first portable launch logs `[portable] copied ...` and keeps them. Without `portable.txt`, remaps made before still work. | 0.7.0 | Not checked |
+| The window opens in place: centred the first time, then where you left it, without appearing first and then jumping (RecompCore patch 0161) | #89 | Start BlueWake windowed: the window appears once, centred. Move it, quit, start again: it opens where you left it. Move it to a second monitor, quit, unplug that monitor, start: it opens centred, and the log says `[windows] window centred: ... is no longer on a monitor`. Fullscreen still starts fullscreen on its display. | 0.7.0 | Not checked |
+| The builder works with Visual Studio 2022's clang | #153 | Build from `main` with Visual Studio 2022 (clang 19): the output says `note: building the app without its optimization profile (... unsupported instrumentation profile format version)` and the build finishes. With Visual Studio 2026 18.10 or newer there is no note. | 0.6.0 | Checked on a Mac with LLVM 18, 20 and 22; Windows untested |
 
-1. Record roughly ten seconds at original 30 FPS, then the same view at Smooth Motion 60 and 120.
-   Note exactly which cloud/wave disappears and whether the camera is moving. Keep the session log.
-2. Return to that view once with the existing caches warmed. If the flicker disappears, inspect the
-   D3D12 fallback/specialized-shader transition; if it persists, prioritize matching, UV and colour
-   interpolation. A cold/warm difference is evidence, not a cause by itself.
-3. Only after finding a repeatable bad interval, use the existing renderer dump with a small range:
-   `DOL_AURORA_FRAME_INTERP_DUMP` names a private output directory; `DOL_AURORA_FRAME_INTERP_DUMP_FROM`
-   and `DOL_AURORA_FRAME_INTERP_DUMP_TO` must both be set, preferably for no more than 30 frames.
-   Read frame numbers from a short run with `DOL_AURORA_FRAME_INTERP_LOG_FRAMES=1`. The dump is
-   inactive at 30 FPS; regular host screenshots are needed for that control. Keep original images
-   private for analysis and ask before publishing promotional footage.
-4. Compare real and intermediate frames. If only intermediate frames fail, use
-   `DOL_AURORA_FRAME_INTERP_TRACE=first-last` for that narrow range to identify the draw's match or
-   rejection. If real frames fail too, investigate transform/texture/depth or backend behavior.
-   Remove diagnostic environment variables after the run; do not use a traced run to claim speed.
+Still open from 0.5.0: the camera-stick invert, "Quit the game" and the option notes, and the mouse buttons, by
+hand ([details](status/WINDOWS_BUILD_0.5.0.md)).
 
-No rendering change is proposed from the current Mac sample. [Exact findings and limits](status/TRIAGE_2026-10-06.md#matched-mac-capture-follow-up).
+## 3. Checked on Windows
 
-## 1. A Windows build from BlueWake `main`
+- **Picto recognition in main (#341, with #334 + RecompCore#36):** pdale-boop completed all three Lenzo photos,
+  with bad shots rejected and good ones accepted ([confirmation](https://github.com/chrissotraidis/bluewake/pull/334#issuecomment-6159163583)).
+  Mac positive/negative recognition passes; RecompCore#36 is merged and #39 fixes the cold-cache identification
+  pass. BlueWake #341 merged #334/#36 after green Windows/Linux CI; #39 stays separate and is not in that pin. Recheck a first photo on a fresh Windows
+  shader cache with #39. The gallery fix is #346 (above); the opt-in 4:3 photo crop #338
+  has separate Windows/Linux checks and a separate RecompCore#37 dependency.
+- 0.6.0, by pdale-boop: the history intro's music (#97, deferred DVD completion, on by default on Windows), the
+  dungeon map in Dragon Roost Cavern (#74, also confirmed by its reporter), the baton (#156), the aiming option
+  (#154), a late-recognized controller as player 1 (#61) and the left stick's dead zone (#138). The last two
+  needed the controller plugged in after launch; 0.7.0 fixes the launch case, and #138's reporter hasn't
+  confirmed it yet.
+- 0.5.0: Exact sound, safe mode after a crash, the AVX2 message under Intel SDE (#77), keyboard keys,
+  `gamecontrollerdb.txt`, the `.rvz` prompt, portable caches and Molgera's floor (#126).
 
-**Why:** ships everything in the list above to Windows players.
+## 4. Flickering clouds, waves and fog with Smooth Motion (#136)
 
-1. Build from a clean checkout of `main`: `python scripts/windows/build.py "D:\path\to\GZLE01.iso"`.
-2. Run checks 1 to 4 of the [Windows checklist](WINDOWS_ACCEPTANCE.md), and the checks in the list above.
-3. Package it like Wind Waker Recomp's releases (its `scripts/windows/package_release.py` is a starting
-   point; bring it over as a pull request): `BlueWake-vX.Y.Z-windows-x64.zip` holding the build folder,
-   licenses and a `BuilderProvenance.json`, **without `nodtool.exe`** (it embeds Wii keys), plus a source zip.
-4. Attach both to a **draft** release on BlueWake. Chris runs the release check and publishes; nobody else
-   publishes releases.
+Reported on NVIDIA and Intel Arc on Windows, and AMD/RADV on Linux; new in 0.5.0, still in 0.7.0. Clean at
+30 FPS. The Linux 120 FPS recording shows frames in order, with sky/cloud positions wrong on individual Smooth
+Motion frames. Draw fusion is also ruled out by the reporter. Earlier exclusions remain:
+`DOL_AURORA_INTERP_ALL_VERTICES=1` (patch 0155), `DOL_GX_TRANSFORM_VERIFY=1` (0152),
+`DOL_AURORA_UBERSHADER=0`, HD textures and G-Sync. The Mac comparison stayed clean; that does not clear Windows
+or Linux. Next: capture a repeatable affected view and trace the sky draws. Smooth Motion at 60 reduces the
+in-between frames; Off avoids this path. For an affected Windows PC:
 
-**Done when:** the draft has both zips and the checklist results are posted.
-
-**Status (October 5, 2026):** done. 0.5.0 was built from `0d1f821`, packaged with
-`scripts/windows/package_release.py` (#119) and published with the Mac, iPhone and iPad files. The checks in
-the table above that need a controller or the settings menu by hand are still open.
-
-## 2. A clear message on CPUs without AVX2 (#77)
-
-**Why:** on an older CPU, such as an Intel Core i7 860, `BlueWake.exe` exits silently.
-
-**In `main` (October 5):** `windows/src/win_entry.c` checks the CPU from the C runtime's initializer table
-(`.CRT$XIU`, before the C++ static initializers and `main`), in functions compiled for plain x86-64, and shows a
-message box instead of stopping silently. Only builds for x86-64-v3 include it. On the Mac, the same code
-compiled for Windows showed the entry in `.CRT$XIU` and no AVX instructions in the check; it hasn't run on Windows.
-
-**Done when:** under Intel SDE emulating an older CPU (`sde64 -nhm -- BlueWake.exe`), the message appears
-instead of nothing, and a normal launch (and `sde64 -hsw -- BlueWake.exe`) is unchanged.
-
-## 3. Opening the window in place (PR #89)
-
-**Why:** the window appears and then jumps to its saved position. saulob's PR fixes that but needs
-`window_pos_x` and `window_pos_y` in `AuroraBackendConfig` (RecompCore,
-`GXRuntime/include/gxruntime/aurora_backend.h`), passed on to Aurora's `windowPosX` and `windowPosY`.
-
-**Done when:** that runtime change is merged into RecompCore `bluewake-next`, pinned here, and #89 builds
-and opens the window in place.
-
-## 4. Elliott's native functions and lean memory
-
-**Why:** `--native-entries` and `--lean-memory` are in BlueWake's Windows builder but change nothing yet.
-The natives hook only where the translated code matches what Wind Waker Recomp's builder produces (0 of 15
-match today), and lean memory needs the deadline test in Wind Waker Recomp's newer `fast_blocks.py`.
-
-1. Bring Wind Waker Recomp's `fast_blocks.py` and its step order into `scripts/windows/build.py`.
-2. Build with both options and check the `native-entries` log for how many certify.
-3. Compare speed in the same scenes with and without them.
-
-**Done when:** the natives certify, the speedup is measured, and the defaults are decided from the numbers.
+1. Record roughly ten seconds at original 30 FPS, then the same view at Smooth Motion 60 and 120. Note exactly
+   which cloud or wave disappears and whether the camera is moving. Keep the session log.
+2. Find a repeatable bad interval with a short run and `DOL_AURORA_FRAME_INTERP_LOG_FRAMES=1`, then dump no
+   more than 30 frames of it: `DOL_AURORA_FRAME_INTERP_DUMP` names a private output folder, and
+   `DOL_AURORA_FRAME_INTERP_DUMP_FROM` and `DOL_AURORA_FRAME_INTERP_DUMP_TO` must both be set.
+3. Compare the real and in-between frames. If only in-between frames fail, run that range once with
+   `DOL_AURORA_FRAME_INTERP_TRACE=first-last` to see how the draw was matched or rejected.
+4. Compare with 0.4.0 at the same view, which reporters say is much better. Remove the diagnostic variables
+   afterwards, and don't use a traced run to claim speed.
 
 ## 5. Windows-only reports
 
@@ -165,12 +114,8 @@ Use `python3 scripts/triage_session_log.py session-*.log` on any attached log.
 
 | Issue | What to do |
 | --- | --- |
-| #80 HD pack shading on AMD | Try the Hypatia DDS pack on Windows, with and without it; compare with the PNG pack. |
-| #61 8BitDo GameCube controller | Check whether SDL sees it and what it maps to. |
 | #76 Forsaken Fortress soft lock | Try to reproduce on the tower with the Moblins; it may be the original game's behaviour. |
-| #74 dungeon map without its drawing | Not Windows-only: reproduced on the Mac on October 5 (see [OPEN_ISSUES_2026-10-05.md](status/OPEN_ISSUES_2026-10-05.md#what-the-october-5-loop-found)). The cause is RecompCore's shader limits, so the fix is a runtime change; nothing to capture on Windows until it lands. |
-| #65, #97 missing music or sound in cutscenes | Still reported on Windows 0.5.0 and Mac M4. The Windows log shows `1tale.afc` in playing state for two retraces, then idle. Check the history intro after naming Link separately from the title demo and bird scene. A cue count or one state=4 line does not prove sustained audible music. See [TECH_DEBT.md](TECH_DEBT.md). |
-| #59, #72, #79, #86 slowdowns | Measure the scenes with the triage script. The #76 log already shows the Forsaken Fortress exterior limited by the GX worker (83 of 97 slow seconds). |
+| #59, #86, #137, #159, #246 slowdowns | The logs say `game-thread` for nearly every slow second; the speed work is in [PERFORMANCE.md](PERFORMANCE.md). Measure the same scenes on each new build. |
 
 Close an issue only when the reporter confirms the fix, or with a clear explanation.
 

@@ -1,55 +1,132 @@
-# BlueWake goal loop: release 0.6.0
+# What we're doing
 
-Updated October 7, 2026. The previous loop (finding and fixing the post-0.5.0 bugs) is done and kept in
-[archive/GOAL_LOOP_2026-10-07.md](archive/GOAL_LOOP_2026-10-07.md). What to build after this release is in
-[PRIORITIES.md](PRIORITIES.md).
+The dated plan, and the five-step loop every session follows. Owner: Chris. Updated October 16, 2026. The ranked
+backlog is [PRIORITIES.md](PRIORITIES.md), the speed strategy and its runbook are [PERFORMANCE.md](PERFORMANCE.md),
+and the standards everything is held to are in [DIRECTION.md](DIRECTION.md). The daily sections from October 11 to
+15, with every measurement, are kept in [status/GOAL_LOOP_2026-10-15.md](status/GOAL_LOOP_2026-10-15.md).
 
-## Goal
+**The aim for the next versions:** BlueWake runs faster and steadier, the bugs players reported are fixed, the Wind
+Waker HD look and textures work the same way on every build, Linux becomes a download, and Android gets to the
+iPhone app's standard.
 
-Publish **BlueWake 0.6.0** from one frozen commit of `main`: the ready-made Windows build, the iPhone and iPad
-app without game code, the source zip and the PadMint recipe. Each fix below is checked on the platforms it ships to,
-as far as the hardware at hand allows, and the reporters are asked to confirm. PadMint picks up the new release by
-itself: it reads the latest release's `padmint.json` and app.
+## The loop
 
-The code is done and merged. What is left is building, checking on real hardware and publishing.
+Every session, by a person or a bot, runs the same five steps:
 
-## What 0.6.0 contains
+1. **Read** today's section, then check `main`, open pull requests and new issue replies.
+2. **Do** the first row that isn't done and isn't waiting on someone. Before writing anything new, check whether an
+   open pull request, or Elliott's `windows-release`, already does it.
+3. **Prove** it. Say what ran, on what device, from which commit. A build that compiles is not a game that plays.
+4. **Record** it. Mark the row done here, add numbers to [PERFORMANCE.md](PERFORMANCE.md#results), and tell the
+   reporters on their issues, in Chris's voice.
+5. **Re-plan** when the evidence changes. Unfinished rows move to the next day. Every row has a "done when".
 
-| Change | Issue | Ships to | Checked so far | Still to check |
-| --- | --- | --- | --- | --- |
-| Dungeon maps draw their grid and rooms | #74 | All | Mac, iPad simulator | Windows |
-| Intro music after the title music | #97 | On by default: Mac, iPhone, iPad. Windows: step 4 decides | Mac (captured audio), physical iPad | Windows with the variable on |
-| A controller recognized late, or left as player 2, plays as player 1 | #61 | Mac, Windows | Unit test with real SDL and Aurora | A physical controller |
-| The Wind Waker baton is not mirrored | #156 | Mac, Windows | Live Mac run (the conducting flag) | Conducting with a controller |
-| No big dead zone or jump on the left stick | #138 | All controllers | Unit test, Windows compile | A physical controller |
-| Option: invert the left stick when aiming | #154 | Mac, Windows | Live Mac run (aiming detected) | Windows menu |
-| Touch controls released when Apple menus open | none | iPhone, iPad | Simulator | A physical device |
-| Clean quit (shutdown fix from the Linux port) | #56 | All | Mac quit with Smooth Motion on | Windows quit |
-| The session log names the controller mapping in use | #61 | Mac, Windows | Unit test | None |
-| Visual Studio 2022 builds from source | #153 | Windows builder | LLVM 18, 20 and 22 against the real profile | The reporter's build |
-| New, experimental: build the iPhone and iPad app on a Windows PC with PadMint | #100 | iPhone, iPad | An older build from Windows on ARM ran the title on an iPad Pro | The candidate's build from Windows played on an iPad; the Mac route with the new recipe |
+## Speed, in three horizons
 
-Not in 0.6.0: the Linux build (#107), the performance work (PRIORITIES Tier 2), later cutscene sound (#65), the
-flicker (#136), HD pack shading (#80), the controller picker (#155). The Pictobox fallback stays opt-in.
+The full reasoning is in [PERFORMANCE.md](PERFORMANCE.md#the-plan). In short:
 
-## Steps
-
-| # | Step | Who | Done when |
+| Horizon | When | What | Gate |
 | --- | --- | --- | --- |
-| 1 | **Freeze.** `version.json` to 0.6.0 build 5, README download names, release notes in `docs/status/RELEASE_0.6.0.md`. Merge, and record the commit as the candidate. | Codex | CI green; candidate commit written in the notes |
-| 2 | **Apple.** From the candidate: `scripts/builder/build.sh --app-only --ipa BlueWake-v0.6.0-ios-unsigned.ipa`, PadMint's audit and `scripts/release/check_public_assets.sh`. Then a full PadMint build from the owned disc (the player's route), kept private. On the Mac and in the iOS Simulator: launch, wait for the title music and check the intro's captured audio, load a copied save, open a dungeon map, quit. | Codex, on Chris's Mac | Every check passes; logs and builds stay local. A physical iPhone or iPad only if Chris asks, with a backup and readback first |
-| 3 | **Windows build and checks.** Codex on Chris's PC follows [WINDOWS_BUILD_0.6.0.md](status/WINDOWS_BUILD_0.6.0.md) as its own loop: it builds #172's branch (the candidate with the intro fix on), walks Chris through the intro with and without the fix, a dungeon map from a test save made from his own card, save, load and quit, and the controller rows if a controller is at hand. | Codex on the PC, Chris plays | Results pull request opened |
-| 4 | **Windows intro default.** Decided by check a in that file. If it passes, the build already has the fix on and #172 merges. If it fails, the PC agent rebuilds the candidate with the fix off, and the notes document the variable. | Decided by the PC run; Codex on the Mac merges | The default and its evidence recorded |
-| 5 | **Package.** The PC agent packages and uploads the Windows zip to the **draft** release `v0.6.0`. On the Mac: download it, compare its SHA-256, `check_public_assets.sh` on every asset (for the Windows zip, `containsTranslatedGameCode: true` is the only accepted finding); source zip and IPA from the release commit, `padmint.json`, `SHA256SUMS`, the notes. | Codex on both machines | Draft release with five audited assets |
-| 6 | **Publish.** Chris publishes and tags. Then: PadMint's `doctor` and `plan` see 0.6.0; each issue above gets a note asking its reporter to confirm; PRIORITIES moves these rows to "shipped". | Chris publishes; Codex follows up | Release live; issues updated |
+| 1. Lean what we have, and catch up with Elliott | 0.7.0 and the next two weeks | Lean block copies (the default since 0.7.0), draw fusion, his faster loads and natives rounds 4, 5 and 7, his upload changes, hidden symbols, Smooth Motion pacing | Faster on the benchmark, and the game plays the same |
+| 2. Behavior, not cycles | 0.8 (weeks) | Lighter timing, natives that remove round trips, cached display lists | The benchmark, and plays the same |
+| 3. Follow the decompilation | Months | Natives compiled from its source, drawing at the GX/J3D API level, matched scenes ported | Each piece checked against the recompilation |
 
-## Rules for each turn
+## Where things stand on October 15
 
-1. Read [AGENTS.md](../AGENTS.md), check `main`, open pull requests and new issue replies before acting.
-2. A problem found during the candidate gets its own small pull request. Then freeze again and rerun only the checks
-   it affects. Never move a passing result to a different build without saying so.
-3. Write what was run, on which device and from which commit in `docs/status/RELEASE_0.6.0.md`. A build that compiles
-   is not a game that plays; a simulator is not a device.
-4. Personal builds, game modules, discs, saves and logs stay private. Only the five public assets are uploaded.
-5. Ask Chris before publishing, deleting anything, or installing on his devices. Don't wait on him for anything else.
-6. If a step is blocked on hardware Chris has, say exactly what to run and keep going with the other steps.
+**The latest download is 0.7.0** (October 10): the Windows zip, the iPhone and iPad app for PadMint, and the source.
+Nothing has been released since. The changes in `main` include contributions from pdale-boop, cforain,
+jkoehler11, jslay88 and Mrlinkwii. The
+[next release's draft](status/RELEASE_NEXT_DRAFT_2026-10-11.md) lists the changes with their checks. 0.8.0 waits for
+the HD work (Chris, October 12).
+
+| Platform | Download today | New in `main` | Still to do |
+| --- | --- | --- | --- |
+| Windows | 0.7.0 zip, built on Chris's PC | Behaviour timing on by default (#335); the Mac and Linux menu layout, controller navigation and the same hotkeys (#326, #329, #330, #332) | The checks in [WINDOWS_TASKS.md](WINDOWS_TASKS.md#1-in-main-for-the-next-windows-build) on a Windows PC, then the release build |
+| Linux | None: build from source ([LINUX.md](LINUX.md)). 0.7.0's notes say a ready-made AppImage comes with 0.8.0 | The same menus, Restart now and safe mode (#324, #327, #328); portable mode (#303); the folder picker (#344); behaviour timing (#335); resizing the window no longer crashes (RecompCore#38, pdale-boop, #353) | An AppImage built from a contributor's own disc; resize on Wayland |
+| Mac | None: build from source | The same menus and hotkeys (#324, #326, #327) | The menu with a controller; whether the prepared build becomes the default |
+| iPhone, iPad | 0.7.0 app, with PadMint | Mods › Wind Waker HD textures (#314); the D-pad in menus and gyro aim (#301, #304) | A tap test of #316 (menu switches keep the menu open) on the iPad; an HD import on hardware (#315) |
+| Android | None: experimental own-disc builds from #93 | Not in `main` yet | #93: one builder check from LiquidAzir, then merge as "build it yourself, experimental"; HD import (#347); other phones; #238 |
+
+**The Wind Waker HD look** (distant islands, ambient occlusion, sun and cloud shadows, edge and torch light, far
+blur, bloom) is in `main`, off by default, on Windows, Mac, Linux, iPhone and iPad; F2 switches it on the desktop
+([WWHD_LOOK.md](WWHD_LOOK.md)). After Chris's iPad feedback, a softer version is draft #321.
+
+**HD textures:** a pack made with the import script installs from **Mods › Wind Waker HD textures** on Windows, Mac,
+Linux, iPhone and iPad ([WWHD_TEXTURES.md](WWHD_TEXTURES.md)). The importer built into the app, from a decrypted HD
+folder or a WUD/WUX image with its key files, is draft #315. Full imports pass on the Mac, on Linux (pdale-boop's
+own dump, October 15) and on an Android emulator (#347). The iOS menu passes with generated files on the simulator,
+which also found a stale "No pack installed yet" after an import, now fixed. Still needed: a Windows import, an
+authentic WUD/WUX image, and checks on an iPhone, an iPad and an Android phone.
+
+**Speed:** behaviour timing is the Windows and Linux default (#335): 7 to 11% faster on Intel desktops, 9% on the
+Steam Deck, and Outset at full speed on LiquidAzir's Fold 7. Mac and iOS builds keep it opt-in
+([PERFORMANCE.md](PERFORMANCE.md#results)).
+
+**Fixed in `main`, for the next build:** the Picto Box credits the right subject (#267), each island shows its own
+sea chart (#263), the Greatfish merchant stays on his raft (#313), save states wait for loose module loads (#350),
+safe startup turns the HD look off (#343), and Picto Box gallery photos fit their frames under widescreen (#346).
+
+### Waiting on Chris
+
+- **#321:** whether the softer HD look is right. A build with it is on Chris's iPad Pro since October 15 (sun shadows off; ambient occlusion, cloud shadows, bloom and the far blur gentler); saves unchanged.
+- **#342 / RecompCore#39** (the first Picto Box photo with cold shaders): after Windows and Linux play checks; #342 also needs its conflicts with `main` resolved before integration.
+- **Apple defaults:** whether the prepared build and behaviour timing become the Mac and iOS default.
+- **0.8.0:** when to freeze.
+
+### Mac builder follow-up, October 16
+
+[PR #367](https://github.com/chrissotraidis/bluewake/pull/367) makes the training host and final Mac app use the
+same pinned static SQLite. The regression covers both fresh discovery and existing caches that select Mono's
+old header and an external library; both cases pass, and both fail with the fix removed. The PR records the
+full private Mac build with conflicting paths and the CI results. Players can update and rerun without moving
+Mono, editing caches, or deleting their build directory once the fix is merged.
+
+### Next, in order
+
+1. #315: a Windows import (asked of pdale-boop on October 15), an authentic WUD/WUX comparison, and the iOS fix
+   checked again on the simulator. Keep the draft's iPhone/iPad hardware, memory and lifecycle checks open until
+   they pass. #347 follows #93 and #315, with its own Android phone and lifecycle checks.
+2. #93: merge once LiquidAzir's `--no-tiered` check is in and CI passes.
+3. The 0.8.0 candidate: the 468-place sweep, the Windows checks, a Linux AppImage and PadMint's `player-check.sh`.
+   While its release build runs on someone's PC, merge only docs into `main`.
+4. Speed, horizon 2: first the benchmark tour ([BENCHMARK_TOUR.md](BENCHMARK_TOUR.md)), so every change is measured the
+   same way; then profile what is left, one measured change per pull request.
+
+## The plan from October 12 (Chris's decisions)
+
+People compare BlueWake with the Wind Waker HD recomp (ZeldaWWHDRecomp), which ships ready-made builds for Windows,
+Mac, Linux and Android without game code and builds the game on first start in about two minutes. Players want that
+quality from BlueWake on every platform. Chris decided:
+
+- **Speed on by default** (#277): lean memory and lean deadlines in the Windows and Linux builders, the lazy overlap
+  watch in the app. Done.
+- **A game-behaviour timing mode** (#290), measured for speed and for whether audio and cutscenes hold. Done: the
+  Windows and Linux default since #335; Mac and iOS opt-in.
+- **The HD look, rebuilt by us,** cheapest first, each an option with the same menu on every platform. Done in `main`
+  (#284, #287, #306), off by default; softer shading in #321. Elliott Tate's October 3 video showed these effects;
+  none of his code for them is in a public branch.
+- **HD textures made in the app on every build:** #315, with Android in #347.
+- **0.8.0 waits for the HD look,** with the Linux AppImage and the speed defaults.
+
+## Later: Elliott's remaining speed work, then the decompilation
+
+One pull request per row, measured on the benchmark (headless, unpaced, from save states), each result in
+[PERFORMANCE.md](PERFORMANCE.md#results). The rows' history is in the
+[October 15 snapshot](status/GOAL_LOOP_2026-10-15.md#after-070-catch-up-with-elliott-then-the-decompilation).
+
+| Step | Notes |
+| --- | --- |
+| Natives rounds 4, 5 and 7, with Elliott's comparison tests | First make #179's certification pass on a lean build (0 of 15 on October 11) |
+| Elliott's upload and vertex changes (RecompCore `6f52a68` to `400728a`) | Merged by hand with patch 0157; dungeon maps, HD packs and lava colours checked before and after |
+| A native compiled from the decompilation's source (`__ieee754_fmod`) | A yes or no for doing more |
+| The host's per-call checks as one flag the module reads inline | After #242; measure on ARM |
+| Draw fusion on the Mac | Forest Haven played on Linux and on the Mac first |
+| Horizon 2, for 0.8 and after | Cycles charged per block, natives for the loops that cross chunks most, cached display lists, the graphics thread on four-core CPUs |
+
+## On the first of every month
+
+Add a row to PERFORMANCE.md's decompilation table from [decomp.dev](https://decomp.dev/zeldaret/tww). Profile the
+benchmark, name the hot functions with the decompilation's `symbols.txt`, list the ones matched since last month,
+and pick the next natives from them: replayed from the translation where exactness matters, compiled from source
+where step 6 showed it pays. When the actor modules pass about 90% of code matched, revisit porting scenes from
+source.

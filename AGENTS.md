@@ -8,11 +8,20 @@ one, this one wins.
 
 - `README.md`: for players.
 - `AGENTS.md` (this file): the rules.
-- `docs/PRIORITIES.md`: the ranked list of bugs, performance work and requests. Start here.
-- `docs/MIGRATION_STATUS.md`: what is done and what is open. `docs/GOAL_LOOP.md`: the current work loop.
-- `docs/BUILD_YOUR_OWN.md`, `docs/BUILDER.md`, `docs/WINDOWS.md`, `docs/MODS.md`, `docs/WWHD_TEXTURES.md`:
-  how things work.
-- `docs/WINDOWS_TASKS.md`: Windows work waiting on a Windows PC, in priority order.
+- `docs/GOAL_LOOP.md`: what we're doing, day by day, and the five-step loop every session follows. Start here.
+- `docs/PRIORITIES.md`: the ranked backlog of bugs, performance work and requests, with the evidence.
+- `docs/PERFORMANCE.md`: the speed strategy (three horizons, following the decompilation), the runbook, and how
+  to measure a change.
+- `docs/DIRECTION.md`: where BlueWake is going: releases without game code, the same app on every platform
+  (Android matches the iPhone app), fast contributor reviews, measured performance.
+- `docs/MIGRATION_STATUS.md`: how Wind Waker Recomp became BlueWake, and what is left of that move.
+- `docs/architecture/Overview.md` and `docs/architecture/Build.md`: the top-down architecture and the
+  complete shared and platform-specific build process.
+- `docs/BUILD_YOUR_OWN.md`, `docs/BUILDER.md`, `docs/WINDOWS.md`, `docs/LINUX.md`, `docs/MODS.md`,
+  `docs/WWHD_TEXTURES.md`, `docs/WWHD_LOOK.md`, `docs/STAGE_SELECT.md`: how things work. `docs/PROFILING.md` (measuring on the
+  Steam Deck), `docs/PERFORMANCE_OPTIMIZATIONS.md` (Smooth Motion and renderer changes, with their switches) and
+  `docs/PADMINT_HANDOFF.md` (the PadMint adapter contract) are references.
+- `docs/WINDOWS_TASKS.md`: what each Windows build was checked for, and what still needs a Windows PC.
 - `docs/status/*_YYYY-MM-DD.md`: dated records of past work. They are evidence, not instructions.
 - `docs/archive/`: old plans, goal prompts and handoffs. Never act on them.
 
@@ -52,7 +61,7 @@ just by building from `main`:
   `windows/src/win_settings.cpp` (Windows). Share a header between them when you can, as
   `runtime/host/src/button_remap.h` does.
 - The Windows CI ("host" job) must pass before merging.
-- If the change still needs a check on a Windows PC, add it to "In `main`, waiting for a Windows build"
+- If the change still needs a check on a Windows PC, add it to "In `main`, for the next Windows build"
   in [docs/WINDOWS_TASKS.md](docs/WINDOWS_TASKS.md) in the same pull request.
 
 ## Talking to people on GitHub
@@ -73,6 +82,10 @@ The maintainers decided on October 4, 2026 to make two exceptions: BlueWake may 
 Every release artifact must pass `scripts/release/check_public_assets.sh <artifact>...`, which runs `python3 ~/.codex/release-gate/release_gate.py` on the maintainer's machine. For the Windows and Linux builds the only accepted finding is `containsTranslatedGameCode: true`. Any other failure is a stop, not a note: these builds must contain no disc data, game assets, saves, signing material or console keys (Elliott's `nodtool.exe` embeds Wii common keys, so it is left out).
 
 Build the Windows and Linux release builds on a maintainer's or contributor's own machine from their own disc. Never put a disc image, files from a disc, or keys in CI secrets, caches or artifacts.
+
+The goal is releases without game code on every platform, with the game built on the player's machine the first
+time it starts ([docs/DIRECTION.md](docs/DIRECTION.md)). The Windows and Linux exceptions above stand until that works
+on each platform.
 
 Only Chris publishes or changes releases.
 

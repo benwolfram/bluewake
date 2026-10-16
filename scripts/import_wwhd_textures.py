@@ -30,24 +30,43 @@ from wwhd.ui import LAYOUT_SPRITES, OPENING_PANELS, fit_sprite, font_sprites, op
 
 ROOT = Path(__file__).resolve().parent.parent
 WINDOWS = sys.platform == "win32"
+LINUX = sys.platform.startswith("linux")
 if WINDOWS:
     # The Windows app's data folder (windows/src/win_entry.c): settings.ini,
     # disc.txt (the disc it remembers) and Load\Textures.
     SUPPORT = Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "BlueWake"
+    SETTINGS = SUPPORT / "settings.ini"
+elif LINUX:
+    # The Linux app (docs/LINUX.md): disc.txt and the game files in
+    # $XDG_DATA_HOME/BlueWake, settings.ini in $XDG_CONFIG_HOME/BlueWake.
+    SUPPORT = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "BlueWake"
+    SETTINGS = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "BlueWake/settings.ini"
 else:
-    SUPPORT = Path.home() / "Library/Application Support/Wind Waker Recomp"
+    # The Mac app reads Application Support/BlueWake/settings.ini; the Wind
+    # Waker Recomp folder is only read while BlueWake has no settings yet.
+    SUPPORT = Path.home() / "Library/Application Support/BlueWake"
+    SETTINGS = SUPPORT / "settings.ini"
 
 
 def default_gc_disc() -> Path:
-    """The GameCube ISO the app already plays: on Windows the .iso or .gcm it
-    remembers (an .rvz it unpacked once to GZLE01.iso in its data folder)."""
-    if WINDOWS:
+    """The GameCube ISO the app already plays: on Windows and Linux the .iso or
+    .gcm it remembers (on Windows, an .rvz it unpacked once to GZLE01.iso in its
+    data folder); on a Mac the disc in BlueWake.app, or Wind Waker Recomp's."""
+    if WINDOWS or LINUX:
         try:
             remembered = Path((SUPPORT / "disc.txt").read_text(encoding="utf-8").strip())
             if remembered.suffix.lower() in (".iso", ".gcm") and remembered.is_file():
                 return remembered
         except (OSError, ValueError):
             pass
+    else:
+        for candidate in (
+            Path("/Applications/BlueWake.app/Contents/Resources/Game/GZLE01.iso"),
+            Path.home() / "Applications/BlueWake.app/Contents/Resources/Game/GZLE01.iso",
+            Path.home() / "Library/Application Support/Wind Waker Recomp/GZLE01.iso",
+        ):
+            if candidate.is_file():
+                return candidate
     return SUPPORT / "GZLE01.iso"
 
 
@@ -389,7 +408,7 @@ def build(args) -> dict:
                   "limits": "Compatible BFRES artwork, audited shared-artwork variants, inventory/collection/chart icons, HUD hearts and swimming meter, adapted English title/opening layouts, font-derived English action/menu text, counters and A/B/X/Y symbols, and adapted key/cursor sprites; HD shaders, models, lighting and other redesigned HUD are not imported."}
         (staging / "import-report.json").write_text(json.dumps(report, indent=2) + "\n")
         (staging / "README.txt").write_text("Private artwork extracted from your own Wind Waker HD disc.\n"
-                                          "Select this folder as the HD texture pack, then restart.\n"
+                                          "Choose this folder in Mods > Wind Waker HD textures, then restart.\n"
                                           "Do not distribute this folder with app builds or source releases.\n")
         staging.replace(output)
         if args.install:
@@ -410,7 +429,7 @@ def main():
     p.add_argument("--output", type=Path, default=SUPPORT / "Load/Textures/WWHD", help="new output folder")
     p.add_argument("--fallback-pack", type=Path, help="existing pack for keys not replaced by the HD disc")
     p.add_argument("--install", action="store_true", help="select the completed pack for the app's next launch")
-    p.add_argument("--settings", type=Path, default=SUPPORT / "settings.ini")
+    p.add_argument("--settings", type=Path, default=SETTINGS)
     p.add_argument("--only", action="append", help="limit to HD resource paths containing this text (for development)")
     args = p.parse_args()
     try:
@@ -422,8 +441,7 @@ def main():
           + (f"Added {report['fallback']['texture_count']} fallback replacements.\n" if report['fallback'] else "")
           + f"Pack: {args.output.expanduser().resolve()}\n"
           + ("Selected for the next app launch.\n" if args.install else
-             "Run again with --install to select it.\n" if WINDOWS else
-             "Choose this folder in Display > HD texture pack.\n"))
+             "Run again with --install, or choose this folder in Mods > Wind Waker HD textures.\n"))
     return 0
 
 

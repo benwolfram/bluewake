@@ -61,6 +61,21 @@ int main() {
     assert(SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, false));
     assert(SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, false));
     SDL_UpdateJoysticks(); SDL_UpdateGamepads(); PADRead(status);
+    // #244: with L and R swapped, the left trigger pulled all the way presses R (its
+    // pull and its click) and L stays released, on top of a custom layout.
+    PADRestoreDefaultMapping(0); bw_apply_button_map(0, map); bw_apply_trigger_swap(0, true);
+    assert(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 32767));
+    assert(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, -32768));
+    SDL_UpdateJoysticks(); SDL_UpdateGamepads(); PADRead(status);
+    assert((status[0].button & (PAD_TRIGGER_L | PAD_TRIGGER_R)) == PAD_TRIGGER_R);
+    assert(status[0].triggerRight > 150 && status[0].triggerLeft == 0);
+    assert(SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true));  // the layout is kept
+    SDL_UpdateJoysticks(); SDL_UpdateGamepads(); PADRead(status);
+    assert((status[0].button & (PAD_BUTTON_A | PAD_BUTTON_B)) == PAD_BUTTON_B);
+    assert(SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, false));
+    assert(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 0));
+    assert(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 0));
+    SDL_UpdateJoysticks(); SDL_UpdateGamepads(); PADRead(status);
     PADRestoreDefaultMapping(0);
     assert(SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true));
     assert(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 24000));
@@ -133,9 +148,37 @@ int main() {
     assert(PADGetIndexForPort(0) < 0);
     assert(bw_claim_player_one() && bw_controller_connection(0) == second);
     assert(!bw_claim_player_one());
+
+    // #155: an adapter reports its empty ports as controllers, and an empty one can hold
+    // player 1. A press on another controller takes player 1 while player 1 has had no
+    // press; after that, a press elsewhere changes nothing.
+    SDL_JoystickID third = SDL_AttachVirtualJoystick(&desc); assert(third);
+    SDL_Joystick* third_joystick = SDL_OpenJoystick(third); assert(third_joystick);
+    assert(aurora::input::add_controller(third) == third);
+    aurora::input::set_player_index(third, 1);
+    bw_player_one_button(third);
+    assert(bw_controller_connection(0) == third);
+    bw_player_one_button(second);
+    assert(bw_controller_connection(0) == third);
+    aurora::input::remove_controller(third);
+    SDL_CloseJoystick(third_joystick); assert(SDL_DetachVirtualJoystick(third));
     aurora::input::remove_controller(second);
     SDL_CloseJoystick(second_joystick); assert(SDL_DetachVirtualJoystick(second));
     assert(!bw_claim_player_one());                        // nothing connected: nothing to claim
+    bw_handoff_connected_controllers();                    // nor anything to hand over
+
+    // #138: a controller connected at launch. Aurora adds it while it starts, before the
+    // event observer exists, so no SDL_EVENT_GAMEPAD_ADDED reaches the handoff: it plays
+    // as player 1 but keeps Aurora's dead zone until the launch handoff runs.
+    SDL_JoystickID at_launch = SDL_AttachVirtualJoystick(&desc); assert(at_launch);
+    joystick = SDL_OpenJoystick(at_launch); assert(joystick);
+    assert(aurora::input::add_controller(at_launch) == at_launch);
+    assert(PADGetDeadZones(0) != nullptr && PADGetDeadZones(0)->useDeadzones);   // the bug
+    bw_handoff_connected_controllers();
+    assert(bw_controller_connection(0) == at_launch);
+    assert(PADGetDeadZones(0) != nullptr && !PADGetDeadZones(0)->useDeadzones);
+    aurora::input::remove_controller(at_launch);
+    SDL_CloseJoystick(joystick); assert(SDL_DetachVirtualJoystick(at_launch));
 
     // #138: the stick's scale. Aurora's cutoff dropped everything below 8000 of 32767 and then
     // jumped to 31; with the game's own dead zone, the full travel is a GameCube stick's 100.

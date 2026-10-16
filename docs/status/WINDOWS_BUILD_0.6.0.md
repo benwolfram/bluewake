@@ -95,16 +95,45 @@ Note the SHA-256 of `build\windows\release\BlueWake-v0.6.0-windows-x64.zip` (`Ge
 
 ## Results
 
+Windows hand-off recorded October 7, 2026. I accepted this build as working for the hand-off and chose to
+proceed without the remaining manual checks. That acceptance is separate from the checks observed below;
+audible music, the new-file route, dungeon interaction and controller behavior are not independently verified.
+
 | Item | Result |
 | --- | --- |
-| Commit built (and whether the fallback was used) | |
-| Build time, clang version, optimization profile used | |
-| Module SHA-256 | |
-| a. Intro, default | |
-| b. Intro, fix off | |
-| c. Load, dungeon map, save, quit | |
-| d. Controller | |
-| Zip SHA-256, uploaded to the v0.6.0 draft | |
+| Commit built (and whether the fallback was used) | `4eb41f0d30e0c2b1694b23082b94411327a2d809` (#172); no fallback. The required candidate diff listed only `runtime/host/src/main.c`. RecompCore `35e037f285ded1b766b7110783b47c976fe2ed10`. |
+| Build time, clang version, optimization profile used | About 4 h 02 min including local training, with one build job; clang 22.1.3; optimization profile used, SHA-256 `a99c11a95a14f75534bd71fdb7388529cd26eff9f4e744743270f6a7b5c7ed5f`. No missing-profile warning. Provenance records an unmodified source checkout, local training and completion at `2026-10-07T13:10:21Z`. |
+| Module SHA-256 | `f62f5bacb8a1f9262238dea92e960917382c7d43c279a7767e9e11fb0315b45f` |
+| a. Intro, default | Accepted as working for hand-off at my direction. Log evidence: `[dvd] deferred completion=on (default)`, `1tale.afc` reached state 4 and decoded all 6,900,928 playback samples, and `streamed playback ended within 60 retraces: 0`. The session lasted 531.1 minutes with zero fatal lines and zero audio-lost events. No separate listening confirmation or verified new-file route; repeated title/history playback is not proof of either. |
+| b. Intro, fix off | Not run; skipped at my direction to proceed with the hand-off. No A/B conclusion. |
+| c. Load, dungeon map, save, quit | Partial shutdown evidence only: `unsupported_texgen=0`, `tev_stages_over=0`, no fatal or double-free entries. No personal card found at the documented path; no alternate supplied. Dungeon map, door traversal, saving and reloading were not checked. This run began in recovery mode after an earlier interrupted launch; a clean subsequent launch and F1 Quit route were not verified. |
+| d. Controller | Not run; controller availability and the listed behaviors were not confirmed. |
+| Zip SHA-256, uploaded to the v0.6.0 draft | `ed94d759a1908059b47f3df242d99421b74971166dfb45ec4d9b8dd6a188f6d8` — `BlueWake-v0.6.0-windows-x64.zip`, uploaded to the draft only. |
+
+Checks b, c and d, a listening check of a, and five cutscenes were run afterwards on a second Windows PC
+from the same commit: [Windows checks for 0.6.0 on a second PC](WINDOWS_CHECKS_0.6.0_2026-10-07.md). That
+run found that the controller changes in 0.6.0 skip a controller connected at launch.
+
+### Build and package notes
+
+- Device: AMD Ryzen 7 5700U with Radeon Graphics, Windows build 26300; 960 x 720 framebuffer,
+  scale 1.25, Smooth Motion off, target 30 FPS.
+- The successful build used a Windows-local checkout. The earlier UNC checkout failed during dependency
+  setup/linking; CMake and Ninja were added to the build process PATH. No application code was changed for
+  these environment fixes. The first shell-attached launch ended early; a separate desktop launch ran the
+  recorded session.
+- I ran `scripts/triage_session_log.py` on the completed portable session. It reported 62 seconds below
+  target, a lowest game speed of 60%, and 19 hitches with a worst frame of 236 ms. This was an extended
+  title/history session, not evidence of full gameplay performance.
+- I removed the portable marker and test card before running `scripts/windows/package_release.py 0.6.0`.
+  Its allowlist and imported-DLL checks passed: 33 files, about 178 MiB compressed / 394 MiB unpacked.
+  Only the Windows ZIP was uploaded. The disc, extracted assets, saves, logs and local optimization profile
+  remain private. The generated source ZIP and local SHA256SUMS were not uploaded.
+- The external release gate is not installed on this PC or its WSL environment. The Mac must download the
+  Windows ZIP, compare the digest above, and run `scripts/release/check_public_assets.sh` before publication,
+  as specified below. The package allowlist check does not replace that content gate.
+- The Mac hand-off may continue on my acceptance above, retaining these unverified checks in the release
+  record. The release remains a draft; publication still belongs to me.
 
 ## After the hand-off (Codex on the Mac)
 
