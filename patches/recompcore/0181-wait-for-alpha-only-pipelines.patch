@@ -1,4 +1,4 @@
-From 635d4010c09f5b154aa53fd926d7264e4d42abca Mon Sep 17 00:00:00 2001
+From 3b727a7ef0e48a0b86556466cb939fbe9658c5a3 Mon Sep 17 00:00:00 2001
 From: Chris Sotraidis <56282582+chrissotraidis@users.noreply.github.com>
 Date: Thu, 15 Oct 2026 01:07:45 +0900
 Subject: [PATCH] Wait for alpha-only pipelines used for gameplay readback
@@ -8,7 +8,7 @@ Subject: [PATCH] Wait for alpha-only pipelines used for gameplay readback
  1 file changed, 6 insertions(+), 1 deletion(-)
 
 diff --git a/GXRuntime/graphics/aurora/lib/gfx/pipeline_cache.cpp b/GXRuntime/graphics/aurora/lib/gfx/pipeline_cache.cpp
-index 4686ffd..0feedf8 100644
+index 4686ffdb9a..0feedf8438 100644
 --- a/GXRuntime/graphics/aurora/lib/gfx/pipeline_cache.cpp
 +++ b/GXRuntime/graphics/aurora/lib/gfx/pipeline_cache.cpp
 @@ -1335,7 +1335,12 @@ PipelineRef find_pipeline(ShaderType type, const rmlui::PipelineConfig& config,

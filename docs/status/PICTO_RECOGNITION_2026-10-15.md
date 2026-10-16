@@ -44,8 +44,8 @@ Lenzo/empty-wall pair. This draft proposes its pin for validation only. Windows/
 remain before adopting the follow-up. The source-only integration CI does not
 replace those checks. iPhone/iPad and Android recognition remain unchecked.
 
-Issue #267 stays open for its reporter. Photo cropping/gallery shape (#338 and
-RecompCore#37) is separate from actor recognition.
+Issue #267 stays open for its reporter. The opt-in photo crop (#338, RecompCore#37,
+merged October 17) is separate from actor recognition.
 
 ## First-use regression fixture
 
@@ -80,3 +80,18 @@ Use a fresh directory for every run; the fixture rejects a nonempty cache. Recor
 the renderer and PASS/FAIL, then check a first good and bad game photo using a copy
 of a card. Run in a separate shell so the fixture environment does not carry into
 normal play.
+
+## Gallery alignment
+
+[#346](https://github.com/chrissotraidis/bluewake/pull/346) merged as `dc45b43` after
+green Windows/Linux CI and contributor gameplay checks at 16:9, 16:10 and 21:9.
+It has no runtime dependency on the crop.
+
+The [M3 Max/Metal visual check](https://github.com/chrissotraidis/bluewake/pull/346#issuecomment-6179086666)
+uses a freshly built module, host `14bc288` and
+runtime `57123c6`. Real photo capture and the keep-photo prompt lead to a
+three-photo gallery: center and side photos align with their frames at all three
+aspects, with left/right navigation endpoints captured. All three sessions exit 0
+and leave the copied cards unchanged. Stage select equips the camera in memory
+and disables saving. These static captures establish alignment and navigation
+endpoints, not frame-by-frame animation or mobile acceptance.

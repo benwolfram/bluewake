@@ -177,6 +177,7 @@ void load_file() {
         else if (k == "haptics_triggers") d.haptics_triggers = parse_bool(v);
         else if (k == "aspect") d.aspect = (v == "16:9" || v == "16:10" || v == "21:9") ? v : "4:3";
         else if (k == "keep_aspect") d.keep_aspect = parse_bool(v);
+        else if (k == "picto_crop") d.picto_crop = parse_bool(v);
         else if (k == "betterww") d.betterww = parse_bool(v);
         else if (k.rfind("option.", 0) == 0) d.options[k.substr(7)] = parse_bool(v);
         else if (k == "hd_textures") d.hd_textures = parse_bool(v);
@@ -236,6 +237,8 @@ void save_file() {
                  d.haptics_strength, d.haptics_triggers);
     std::fprintf(f, "aspect=%s\nkeep_aspect=%d\nbetterww=%d\nhd_textures=%d\nlle_audio=%d\n", d.aspect.c_str(),
                  d.keep_aspect, d.betterww, d.hd_textures, d.lle_audio);
+    if (d.picto_crop)
+        std::fprintf(f, "picto_crop=1\n");
     for (const auto& [name, on] : d.options)
         std::fprintf(f, "option.%s=%d\n", name.c_str(), on);
     std::fprintf(f, "movement_extras=%d\nsprint_speed=%.2f\nfast_transitions=%d\nquick_doors=%d\n",
@@ -843,11 +846,18 @@ void hd_textures_section(Settings& d) {
     restart_note(d.hd_textures != g_launched.hd_textures || d.texture_pack != g_launched.texture_pack);
     const std::string folder = texture_pack_folder(d);
     const size_t textures = g_pack_count.get(folder);
-    if (textures > 0)
-        ImGui::TextDisabled("    %zu textures in %s", textures, folder.c_str());
-    else
-        ImGui::TextDisabled("    No .png or .dds textures in %s yet. A Dolphin-format pack for GZLE01 goes there.",
-                            folder.c_str());
+    {
+        const bool on = d.hd_textures && (!folder.empty());
+        const bw_texture_pack::PackState state = bw_texture_pack::state_of(textures, on);
+        std::string line;
+        if (!on)
+            line = "Off. A Dolphin-format pack for GZLE01 (a folder of .png or .dds files) replaces the game's textures.";
+        else if (textures == 0)
+            line = "No .png or .dds textures found in the chosen folder.";
+        else
+            line = std::to_string(textures) + " textures in " + folder;
+        ImGui::TextColored(bw_texture_pack::state_color(state), "%s", line.c_str());
+    }
     if (ImGui::SmallButton("Choose texture pack folder..."))
         bw_texture_pack::choose_folder(nullptr, folder);
     ImGui::SameLine();
@@ -1446,6 +1456,7 @@ extern "C" void bw_settings_load(const char* data_dir) {
             g_saved.betterww = false;
             g_saved.options.clear();
             g_saved.hd_textures = false;
+            g_saved.hd_look = false;
             g_saved.lle_audio = false;
             g_saved.movement_extras = false;
             g_saved.fast_transitions = false;
@@ -1465,7 +1476,17 @@ extern "C" void bw_settings_load(const char* data_dir) {
         _putenv_s("BLUEWAKE_FAST_FORWARD", "0");
         _putenv_s("BLUEWAKE_FADE_FRAMES", "0");
         _putenv_s("BLUEWAKE_QUICK_DOORS", "0");
-        std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio and restart defaults\n");
+        _putenv_s("BLUEWAKE_HD_LOOK", "0");
+        // Clear overrides so the HD switch can enable every effect again later.
+        _putenv_s("BLUEWAKE_HD_DISTANT_ISLANDS", "");
+        _putenv_s("BLUEWAKE_HD_BLOOM", "");
+        _putenv_s("BLUEWAKE_HD_FAR_BLUR", "");
+        _putenv_s("BLUEWAKE_HD_AO", "");
+        _putenv_s("BLUEWAKE_HD_CLOUD_SHADOWS", "");
+        _putenv_s("BLUEWAKE_HD_SUN_SHADOWS", "");
+        _putenv_s("BLUEWAKE_HD_EDGE_LIGHT", "");
+        _putenv_s("BLUEWAKE_HD_TORCH_LIGHT", "");
+        std::fprintf(stderr, "[safe-mode] recovering a pending launch; HLE audio, no HD look and restart defaults\n");
     }
     g_launched = g_saved;
 }
@@ -1473,6 +1494,9 @@ extern "C" void bw_settings_load(const char* data_dir) {
 extern "C" void bw_settings_apply_launch(void) {
     // What the command line chose wins for this session (and is shown).
     g_session = g_saved;
+    // apply_hd_look() reads the session later, even if the backup failed.
+    if (g_safe_mode)
+        g_session.hd_look = false;
     Settings& d = g_session;
     if (env_set("BLUEWAKE_JUMP_BUTTON"))
         d.movement_extras = std::getenv("BLUEWAKE_JUMP_BUTTON")[0] != '0';
@@ -1533,6 +1557,8 @@ extern "C" void bw_settings_apply_launch(void) {
     if (d.aspect != "4:3")
         env_default("BLUEWAKE_ASPECT", d.aspect);
     env_default("DOL_AURORA_ASPECT_FIT", d.keep_aspect ? "1" : "0");
+    if (d.picto_crop)
+        env_default("BLUEWAKE_PICTO_CROP", "1");
     if (d.betterww)
         env_default("BLUEWAKE_MODS", "betterww");
     if (!d.options.empty()) {
