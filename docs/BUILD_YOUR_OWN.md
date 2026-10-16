@@ -1,26 +1,19 @@
 # Build your own BlueWake
 
-BlueWake is distributed as source. Build it on an Apple Silicon Mac from your
-own supported *The Wind Waker* disc for your iPhone/iPad, or use the Mac migration
-candidate below. The game's code is translated from your disc during the build,
+On iPhone, iPad and Mac you build BlueWake yourself on an Apple Silicon Mac from your
+own supported *The Wind Waker* disc. (On Windows you can instead download the ready-made build from the
+[Releases page](https://github.com/chrissotraidis/bluewake/releases/latest).) The game's code is translated from your disc during the build,
 so **the app you build is yours alone: never share or upload it.**
 
-The migration candidate is reviewed in
-[PR #37](https://github.com/chrissotraidis/bluewake/pull/37), branch
-`codex/fork-consolidated`; it is not yet merged into `main`. Fresh player-build
-acceptance is tied to `3392854`. The later `9706637` host adds the bounded Mac
-Pictobox repair, tested with that same personal module; it has not repeated the
-complete clean player build. Follow-up test-fixture changes do not alter that
-host. For candidate testing from a new checkout use
-`git clone --branch codex/fork-consolidated https://github.com/chrissotraidis/bluewake.git`.
-Do not reset an existing checkout or replace its private build outputs to switch
-revisions. The [platform matrix](status/FORK_RECONCILIATION_2026-10-02.md#player-build-and-platform-gates)
-separates implemented routes from completed player acceptance. Windows has a
-separate [source-build guide](WINDOWS.md).
+For how disc translation, the shared runtime and each platform build fit
+together, see the [architecture overview](architecture/Overview.md) and
+[build toolchain](architecture/Build.md).
 
-## Mac personal app (migration candidate)
+Windows players who prefer to build their own: see [BlueWake on Windows](WINDOWS.md).
 
-The reconciliation branch also provides an Apple Silicon Mac target:
+## Mac personal app
+
+BlueWake also builds as an Apple Silicon Mac app:
 
 ```sh
 scripts/builder/build.sh /path/to/your/GZLE01.iso --platform macos --out build/macos
@@ -42,7 +35,7 @@ previous packaged app beside the new one. It signs locally with an ad-hoc
 signature; `--identity NAME` selects an installed Mac signing identity. Device
 options `--ipa`, `--app`, `--profile` and `--install` do not apply to Mac.
 
-The migration candidate also accepts `--combined-optimizations` for personal
+The Mac build also accepts `--combined-optimizations` for personal
 Mac builds. It selects the imported preparation/native helpers measured in the
 reconciliation ledger, applies the same configuration during local training and
 compilation, and records it in the app's provenance. The packaged app enables
@@ -56,19 +49,8 @@ matching completed work is reused. This does not enable PadMint Mac support.
 local packaging checks, not a playable build or an accepted public release.
 PadMint's complete Mac path is not implemented or claimed here.
 
-**Acceptance is in progress.** At `3392854`, the fresh owned-disc combined
-build completes translation, local training, compilation, packaging and local
-signature checks. Its relocated app passes actual game save/reload while
-preserving the original card and other slots, and fullscreen/preferences survive
-a separate launch. Fresh start reaches player control; a current-module F5/F9
-state also restores correctly after quitting and reopening the app. A fresh
-ladder/outdoor/door/indoor route passes. These checks do not establish every
-scene, audible output, physical
-controllers or sustained performance. A local replacement from the recorded
-earlier developer app also preserves copied saves/settings/SRAM and loads the
-save afterward; physical iOS upgrades remain untested. See the
-[reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md) for remaining
-checks before migration is recommended.
+Dated records of the combined Mac build's checks are in
+[status/BUILD_YOUR_OWN_EVIDENCE_2026-10-03.md](status/BUILD_YOUR_OWN_EVIDENCE_2026-10-03.md).
 
 ## What you need
 
@@ -177,11 +159,17 @@ BlueWake slot for it; your current saves are backed up first. USA saves only.
 
 ## Mods
 
-The build includes the Widescreen (16:9 and 16:10) and Better Wind Waker mods (`--no-mods` leaves them
-out). Better Wind Waker's settings are built in: turn it on in **⋯ › Mods** and choose its settings in
+The build includes the Widescreen (16:9 and 16:10, and 21:9 on the Mac) and Better Wind Waker mods
+(`--no-mods` leaves them out). Better Wind Waker's settings are built in: turn it on in **⋯ › Mods** and choose its settings in
 **⋯ › Mods › Better Wind Waker Settings**. No patched disc is needed. See [MODS.md](MODS.md).
 
 ## If something fails
+
+If a Mac build reports missing SQLite functions, Mono headers, or a Homebrew SQLite dependency
+that is not self-contained, update BlueWake and rerun the same build command. Both the local
+training host and the Mac app use the pinned static SQLite, including when an existing CMake
+cache contains older SQLite paths. There is no need to rename Mono, install SQLite with Homebrew,
+edit CMake caches, or delete the build directory.
 
 Each step writes a log under `build/device/logs`, and the error names it. Rerunning the same command
 reuses compatible completed work. For help, ask on [Discord](https://discord.gg/xwHfUD2bxW) or

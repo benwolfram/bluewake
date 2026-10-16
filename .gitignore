@@ -14,6 +14,13 @@ game/
 *.wia
 *.ciso
 *.gcz
+*.wud
+*.wux
+*.tik
+*.key
+*.szs
+*.bfres
+*.bflim
 *.dol
 *.rel
 
@@ -54,3 +61,11 @@ cmake-build-*/
 .vscode/
 *.swp
 *~
+
+# Left behind by GXRuntime host tests run from the repository root
+gxruntime-memory-card-*.dolcard*
+# Android: personal builds (translated game code) and signing
+*.apk
+*.so
+*.keystore
+*.jks

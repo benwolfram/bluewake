@@ -34,10 +34,10 @@ PROFILE_HOST_PGO=scripts/builder/profiles/bluewake/host.profdata
 
 # RecompCore: chrissotraidis/RecompCore candidate branch codex/bluewake-mem1-alias-parity, which is
 # elliotttate/RecompCore's windows-release 9618e9d (chrissotraidis 2d60636 plus
-# patches/recompcore/0098-0113) plus BlueWake stability patches 0114-0130, reconciliation patches 0131-0139, logging patches 0140 and 0142, pacing patch 0141 and Elliott Tate's post-0.4.0 runtime 0143-0150. DolRecomp: elliotttate's copy of
+# patches/recompcore/0098-0113) plus BlueWake stability patches 0114-0130, reconciliation patches 0131-0139, logging patches 0140 and 0142, pacing patch 0141 and Elliott Tate's post-0.4.0 runtime 0143-0150, the FPS overlay fix 0151, and Elliott Tate's October 3 runtime 0152-0155, module display list textures 0156, the hardware's texgen and TEV stage counts 0157, the Linux port's shutdown fix 0158 (James Koehler-Killeen), the GameCube stick scale 0159, Aurora's user folder 0160, the window's position at creation 0161 and the FPS overlay's position 0162 (saulob), the renderer's name 0163, Smooth Motion on 8+ threads 0164, and Elliott Tate's October 4 draw fusion and GPU profiler 0165-0168, and the Wind Waker HD look's bloom, far blur, ambient occlusion, cloud shadows, sun shadows, edge light and torch light 0169-0175, and a cache flush keeping the GPU's EFB copies 0176, the Picto Box's actor ids from the current EFB 0177 (jslay88), and a resized Vulkan window keeping its surface 0178 (pdale-boop), and the copy crop for pictures taken through a widened camera 0180 (pdale-boop). DolRecomp: elliotttate's copy of
 # chrissotraidis 5c91d6e plus patches/dolrecomp/0019.
 RECOMPCORE_URL=https://github.com/chrissotraidis/RecompCore.git
-RECOMPCORE_SHA=6c853a1d908af3d6f700510377729f5d4c2c8c31
+RECOMPCORE_SHA=77d4717d868cec8b4014932bb22978c284a535a7
 DOLRECOMP_SHA=b8b534591cba8ca7cd43943a655ee6e2591cf5de
 DAWN_URL=https://github.com/encounter/dawn/releases/download/v20260618.032059/dawn-ios-arm64.tar.gz
 DAWN_SHA256=ada0bafc173152d80eba7c3b2f9609a71185d5809cbd5dd3251b91a0803a7ae2
@@ -161,7 +161,7 @@ profile_generate() {
     # Reuse only a verified tree made by the same generators and mod selection.
     # Checking the base digest alone used to retain mod variants after --no-mods.
     local inputs current saved optimization_recipe
-    optimization_recipe=$(python3 "$root/scripts/builder/module_optimizations.py" fingerprint "$module_optimizations")
+    optimization_recipe=$(python3 "$root/scripts/builder/module_optimizations.py" fingerprint "$module_optimizations" ${lean_arg:-})
     inputs=$( { printf '%s\n' "$digest" "$mods" "$optimization_recipe"; shasum -a 256 \
         "$root/scripts/mods/"*.py "$root/scripts/mods/"*.sh \
         "$root/mods/widescreen/"*.gecko "$root/mods/betterww/options.txt"; } | shasum -a 256 | awk '{print $1}')
@@ -204,6 +204,8 @@ profile_mods() {
 profile_train() {
     local args=(--disc "$iso" --out "$out" --jobs "$jobs" --module-optimizations "$module_optimizations")
     [ -z "$training_save" ] || args+=(--save "$training_save")
+    # Lean memory makes the instrumented module too large to link at -O0.
+    case " ${lean_arg:-} " in *" --lean-memory "*) args+=(--instrumented-opt-level 1) ;; esac
     run local-training python3 "$root/scripts/builder/train_local_pgo.py" "${args[@]}"
     [ -s "$out/pgo-local/composite.profdata" ] || die "local training produced no game profile"
     composite_pgo+=("$out/pgo-local/composite.profdata")
@@ -235,10 +237,19 @@ profile_compile() {
         flags="$flags $(pgo_flags "$profile_path")"
         echo "with the composite profile(s): ${composite_pgo[*]}"
     fi
+    # Tiered, as on Windows and Linux: the chunks the profile never ran (504 of 813
+    # for 0.7.0, a third of the compile) at -O1, the rest at -O2. Empty clears it.
+    local cold_file=""
+    if [ "$tiered" -eq 1 ] && [ "$opt_level" = 2 ] && [ ${#composite_pgo[@]} -gt 0 ]; then
+        cold_file=$out/composite-cold-sources.txt
+        run composite-cold-sources python3 "$root/scripts/builder/cold_sources.py" \
+            "$out/composite.profdata" "$out/composite-src" "$cold_file"
+        tail -1 "$logs/composite-cold-sources.log"
+    fi
     run "composite-configure-$platform" cmake -S cmake/composite -B "$build_dir" -G Ninja \
         "-DCMAKE_SYSTEM_NAME=$cmake_system" "-DCMAKE_OSX_SYSROOT=$sdk" -DCMAKE_OSX_ARCHITECTURES=arm64 \
         "-DCMAKE_OSX_DEPLOYMENT_TARGET=$deployment" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_FLAGS=$flags" \
-        -DCOMPOSITE_OPTIMIZATION_LEVEL="$opt_level" "${optimization_flags[@]}" \
+        -DCOMPOSITE_OPTIMIZATION_LEVEL="$opt_level" "-DCOMPOSITE_COLD_SOURCES_FILE=$cold_file" "${optimization_flags[@]}" \
         -DCOMPOSITE_DIR="$out/composite-src" -DGXRUNTIME_DIR="$recompcore/GXRuntime" \
         -DABI_DIR="$recompcore/Source/Core/Core/PowerPC/StaticRecomp"
     run "composite-build-$platform" cmake --build "$build_dir" -j "$jobs"

@@ -39,8 +39,12 @@ add_executable(bluewake_host
     src/delivery_digest.c
     src/edge_intercepts.c
     src/game_options.c
+    src/forest_water.c
+    src/hd_look.c
+    src/audio_watch.c
     src/fast_load.c
     src/fps_watch.c
+    src/dpad_menus.c
     src/jump_button.c
     src/climb.c
     src/settings_menu.cpp
@@ -163,6 +167,12 @@ target_include_directories(bluewake_feature_dispatch_test PRIVATE ${CMAKE_CURREN
 add_test(NAME bluewake_feature_dispatch_test COMMAND bluewake_feature_dispatch_test)
 set_tests_properties(bluewake_feature_dispatch_test PROPERTIES TIMEOUT 30)
 
+add_executable(bluewake_audio_watch_test ../../tests/audio_watch_test.c src/audio_watch.c)
+target_link_libraries(bluewake_audio_watch_test PRIVATE gxruntime)
+target_include_directories(bluewake_audio_watch_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME bluewake_audio_watch_test COMMAND bluewake_audio_watch_test)
+set_tests_properties(bluewake_audio_watch_test PROPERTIES TIMEOUT 30)
+
 # The pinned runtime ships matching/blending/pacing regressions, but does not
 # register this standalone suite in its own CMake. Exercise the actual linked
 # implementation without a disc, graphics device or private fixtures.
@@ -182,6 +192,9 @@ add_test(NAME bluewake_save_state_test COMMAND bluewake_save_state_test)
 set(BLUEWAKE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(BLUEWAKE_HOST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 include("${BLUEWAKE_REPO_ROOT}/cmake/host_state_save_test.cmake")
+include("${BLUEWAKE_REPO_ROOT}/cmake/dvd_completion_test.cmake")
+include("${BLUEWAKE_REPO_ROOT}/cmake/cache_flush_fallback_test.cmake")
+target_link_libraries(bluewake_dvd_completion_test PRIVATE z)
 include("${BLUEWAKE_REPO_ROOT}/cmake/haptics_test.cmake")
 target_link_libraries(bluewake_host_state_save_failure_test PRIVATE z)
 
@@ -504,6 +517,16 @@ target_include_directories(bluewake_edge_intercepts_test PRIVATE
 add_test(NAME bluewake_edge_intercepts_test
     COMMAND bluewake_edge_intercepts_test)
 
+add_executable(bluewake_forest_water_test
+    ../../tests/forest_water_test.c
+    src/forest_water.c)
+target_link_libraries(bluewake_forest_water_test PRIVATE gxruntime ${CMAKE_DL_LIBS})
+target_include_directories(bluewake_forest_water_test PRIVATE
+    ${GXRUNTIME_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ref/recompcore/Source/Core/Core/PowerPC/StaticRecomp)
+add_test(NAME bluewake_forest_water_test COMMAND bluewake_forest_water_test)
+
 add_executable(bluewake_external_memory_test
     ../../tests/external_memory_test.c
     src/external_memory.c)
@@ -804,6 +827,7 @@ add_test(NAME bluewake_launch_marker_test COMMAND bluewake_launch_marker_test)
 
 add_executable(bluewake_settings_state_test ../../tests/settings_state_test.cpp)
 target_compile_features(bluewake_settings_state_test PRIVATE cxx_std_17)
+target_include_directories(bluewake_settings_state_test PRIVATE ${GXRUNTIME_DIR}/graphics/aurora/include)
 add_test(NAME bluewake_settings_state_test COMMAND bluewake_settings_state_test)
 if(UNIX)
     add_executable(bluewake_process_close_test ../../tests/process_close_test.c)
@@ -828,6 +852,15 @@ set_tests_properties(bluewake_audio_sink_test PROPERTIES TIMEOUT 15)
 add_executable(bluewake_face_button_swap_test ../../tests/face_button_swap_test.c)
 target_include_directories(bluewake_face_button_swap_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME bluewake_face_button_swap_test COMMAND bluewake_face_button_swap_test)
+add_executable(bluewake_dpad_menus_test ../../tests/dpad_menus_test.c)
+target_include_directories(bluewake_dpad_menus_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME bluewake_dpad_menus_test COMMAND bluewake_dpad_menus_test)
+add_executable(bluewake_gyro_aim_test ../../tests/gyro_aim_test.c)
+target_include_directories(bluewake_gyro_aim_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(NOT WIN32)
+    target_link_libraries(bluewake_gyro_aim_test PRIVATE m)
+endif()
+add_test(NAME bluewake_gyro_aim_test COMMAND bluewake_gyro_aim_test)
 
 add_executable(bluewake_desktop_controller_test ../../tests/desktop_controller_test.cpp)
 target_include_directories(bluewake_desktop_controller_test PRIVATE ${GXRUNTIME_DIR}/graphics/aurora/lib ${CMAKE_CURRENT_SOURCE_DIR}/src)

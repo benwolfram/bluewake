@@ -66,6 +66,7 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/rel_scratch_allocator.c
     ${BLUEWAKE_HOST_SRC}/scheduler_contract.c
     ${BLUEWAKE_HOST_SRC}/fast_load.c
+    ${BLUEWAKE_HOST_SRC}/dpad_menus.c
     ${BLUEWAKE_HOST_SRC}/jump_button.c
     ${BLUEWAKE_HOST_SRC}/climb.c
     ${BLUEWAKE_HOST_SRC}/save_state.c
@@ -73,6 +74,9 @@ set(BLUEWAKE_HOST_SOURCES
     ${BLUEWAKE_HOST_SRC}/quick_doors.c
     ${BLUEWAKE_HOST_SRC}/haptics.c
     ${BLUEWAKE_HOST_SRC}/draw_tags.c
+    ${BLUEWAKE_HOST_SRC}/forest_water.c
+    ${BLUEWAKE_HOST_SRC}/hd_look.c
+    ${BLUEWAKE_HOST_SRC}/audio_watch.c
     ${BLUEWAKE_HOST_SRC}/fps_watch.c
     ${BLUEWAKE_HOST_SRC}/game_options.c
     ${BLUEWAKE_HOST_SRC}/mouse_camera.c)
@@ -442,6 +446,12 @@ set_tests_properties(bluewake_desktop_controller_test PROPERTIES TIMEOUT 15)
 add_executable(bluewake_face_button_swap_test ${BLUEWAKE_REPO_ROOT}/tests/face_button_swap_test.c)
 target_include_directories(bluewake_face_button_swap_test PRIVATE ${BLUEWAKE_HOST_SRC})
 add_test(NAME bluewake_face_button_swap_test COMMAND bluewake_face_button_swap_test)
+add_executable(bluewake_dpad_menus_test ${BLUEWAKE_REPO_ROOT}/tests/dpad_menus_test.c)
+target_include_directories(bluewake_dpad_menus_test PRIVATE ${BLUEWAKE_HOST_SRC})
+add_test(NAME bluewake_dpad_menus_test COMMAND bluewake_dpad_menus_test)
+add_executable(bluewake_gyro_aim_test ${BLUEWAKE_REPO_ROOT}/tests/gyro_aim_test.c)
+target_include_directories(bluewake_gyro_aim_test PRIVATE ${BLUEWAKE_HOST_SRC})
+add_test(NAME bluewake_gyro_aim_test COMMAND bluewake_gyro_aim_test)
 
 
 add_executable(bluewake_audio_sink_test ${GXRUNTIME_DIR}/graphics/aurora/tests/audio_sink_test.cpp)
@@ -469,6 +479,7 @@ set_tests_properties(bluewake_pipeline_shutdown_test PROPERTIES TIMEOUT 45)
 
 add_executable(bluewake_settings_state_test ${BLUEWAKE_REPO_ROOT}/tests/settings_state_test.cpp)
 target_compile_features(bluewake_settings_state_test PRIVATE cxx_std_17)
+target_include_directories(bluewake_settings_state_test PRIVATE ${GXRUNTIME_DIR}/graphics/aurora/include)
 add_test(NAME bluewake_settings_state_test COMMAND bluewake_settings_state_test)
 
 
@@ -491,6 +502,14 @@ target_link_libraries(bluewake_save_state_test PRIVATE ZLIB::ZLIB bluewake_posix
 add_test(NAME bluewake_save_state_test COMMAND bluewake_save_state_test)
 
 include("${BLUEWAKE_REPO_ROOT}/cmake/host_state_save_test.cmake")
+include("${BLUEWAKE_REPO_ROOT}/cmake/dvd_completion_test.cmake")
+include("${BLUEWAKE_REPO_ROOT}/cmake/cache_flush_fallback_test.cmake")
+target_include_directories(bluewake_cache_flush_fallback_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
+target_compile_options(bluewake_cache_flush_fallback_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
+target_link_libraries(bluewake_cache_flush_fallback_test PRIVATE bluewake_posix_compat)
+target_include_directories(bluewake_dvd_completion_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
+target_compile_options(bluewake_dvd_completion_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})
+target_link_libraries(bluewake_dvd_completion_test PRIVATE ZLIB::ZLIB bluewake_posix_compat)
 include("${BLUEWAKE_REPO_ROOT}/cmake/haptics_test.cmake")
 target_include_directories(bluewake_host_state_save_failure_test PRIVATE ${BLUEWAKE_COMPAT_INCLUDES})
 target_compile_options(bluewake_host_state_save_failure_test PRIVATE ${BLUEWAKE_COMPAT_FORCE_INCLUDE})

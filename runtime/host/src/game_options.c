@@ -27,6 +27,7 @@ static OptionFn g_option;
 static CPUState* g_cpu;
 static u32 g_instant_text;
 static u32 g_brisk_sail;
+static u32 g_invert_camera_x;
 
 static bool option_on(u32 index) { return g_flags != NULL && index != 0u && g_flags[index] != 0u; }
 
@@ -182,6 +183,8 @@ void bluewake_game_options_enable(void* lib, CPUState* cpu, bool mod_enabled) {
             g_instant_text = index;
         else if (strcmp(name, "brisk_sail") == 0)
             g_brisk_sail = index;
+        else if (strcmp(name, "invert_camera_x") == 0)
+            g_invert_camera_x = index;
         else if (strcmp(name, "swift_sail") == 0)
             swift = index;
         g_flags[index] = on ? 1u : 0u;
@@ -194,6 +197,8 @@ void bluewake_game_options_enable(void* lib, CPUState* cpu, bool mod_enabled) {
     const u32 written = writes ? writes(write_guest, cpu) : 0u;
     fprintf(stderr, "[options] %s (%u values written)\n", list[0] ? list : "none", written);
 }
+
+bool bluewake_game_options_invert_camera_x(void) { return option_on(g_invert_camera_x); }
 
 const char* bluewake_game_options_describe(u32 position, const char** title, bool* default_on, bool* on) {
     u32 index = 0u, defaults = 0u;

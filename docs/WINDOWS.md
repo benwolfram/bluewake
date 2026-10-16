@@ -1,6 +1,9 @@
 # BlueWake on Windows
 
-BlueWake also builds as a native Windows x86-64 program. As on the Mac, you build it yourself from your own disc:
+**Most players should download the ready-made Windows build** from the [Releases page](https://github.com/chrissotraidis/bluewake/releases/latest): unpack it,
+run `BlueWake.exe` and choose your own disc image (`.iso` or `.gcm`).
+
+This page is about building it yourself. BlueWake builds as a native Windows x86-64 program from your own disc:
 the game's code is translated from that disc during the build, so **the folder you build is yours alone: never
 share or upload it.**
 
@@ -11,65 +14,24 @@ point in place of the iOS app shell.
 
 ## Status
 
-Experimental in BlueWake. The source port and settings overlay come from elliotttate's
-`windows-release` commits `4b01c6b` and `4fbcc7f`; the original Git author is retained for the port.
-The fork's initial PC measurements are recorded in its
-[Windows port documentation](https://github.com/elliotttate/Wind-Waker-Recomp/blob/4b01c6bfd7e80e6c44880052d808c6e6b0ab7b39/docs/WINDOWS.md).
-They are the contributor's results, not independent Windows gameplay evidence for this integration.
-
-On October 1, the Win32 compatibility layer, entry shim, settings overlay and shared C host sources
-were checked with a native macOS LLVM-MinGW cross-compiler. The source-only runtime/app also compiled
-and linked on Windows with clang, the MSVC toolchain and Dawn in
-[CI run 36799881615](https://github.com/chrissotraidis/bluewake/actions/runs/36799881615), including the
-BlueWake settings theme and save-state sources. Neither check is Direct3D gameplay, a complete
-personal-module build or controller/audio acceptance. Parallels is not needed for these checks.
-
-The October 1 stability follow-up also passes native app linking and the 16-reader environment-cache
-regression at `60be199` in [CI run 36805880425](https://github.com/chrissotraidis/bluewake/actions/runs/36805880425).
-The source-only workflow opts into `BLUEWAKE_WINDOWS_REGRESSION_TESTS`; native app linking and both
-the cache and shared FPS classifier/worker-counter checks pass at `830bf7d` in
-[CI run 36808815002](https://github.com/chrissotraidis/bluewake/actions/runs/36808815002).
-The pinned runtime's existing interpolation matching/blending/pacing suite also passes natively,
-with the full app link and the other two tests, at `ec6e797` in
-[CI run 36810248709](https://github.com/chrissotraidis/bluewake/actions/runs/36810248709).
-The subsequent monotonic-clock initialization fix, its concurrent-clock regression, the other
-three tests and the full app link also pass natively at `74da8ee` in
-[CI run 36810799124](https://github.com/chrissotraidis/bluewake/actions/runs/36810799124).
-These checks do not imply Windows gameplay or audio acceptance.
-
-The current source qualification (`6b64f45`, runtime `0568fedd`, merged in #38)
-builds the native Windows host and passes all 58 runtime regressions plus 24
-builder training/cache checks in
-[CI run 37071417006](https://github.com/chrissotraidis/bluewake/actions/runs/37071417006).
-This includes the new PE/runtime and I8/RGB565 texture-encoding checks, and the
-actual host save-failure fixture. The earlier `3392854` baseline passed 56 tests;
-the newer host adds the Pictobox fix qualified on Mac in the reconciliation ledger.
-This covers app linking and the registered regression suites, not a complete
-player-owned-disc build, Direct3D gameplay, audio or physical controllers.
-
-Remaining native acceptance needs an x86-64 Windows PC with a Direct3D 12 GPU.
-A Windows ARM64 VM running x64 applications can provide separately labelled
-compatibility evidence, but cannot establish native x64 performance parity.
-Use the [Windows testing handoff](WINDOWS_ACCEPTANCE.md) for the current build,
-gameplay, save-preservation and donor-comparison checklist and results template.
-
-The candidate includes prepaid blocks, fixed CPU/RAM storage, inline floating
-point, gather helpers, direct calls and certified native replacements as explicit
-builder options. Their bounded Mac evidence is in the
-[reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md); it does not
-establish Windows performance. The Windows builder now carries Elliott’s local PGO training route: it builds
-an instrumented module, plays the opening to control in isolated plain/modded
-runs, validates executed translated functions, and uses the local profile for O2.
-Source contract checks cover the wiring; a complete Windows disc-to-playback run
-remains unverified. Mac training receipts do not validate that Windows path. Full clean Windows builds, matched performance and gameplay remain open.
+Windows is BlueWake's ready-made download. Since 0.5.0 (October 5) every Windows release is built from `main`
+on a maintainer's PC from their own disc, checked there, and published by Chris; the latest is 0.7.0. What each
+build was checked for, and what still needs a Windows PC, is in [Windows tasks](WINDOWS_TASKS.md); the release
+records are `docs/status/WINDOWS_BUILD_*.md`. The CI host build and its tests run on every pull request. The
+early history of the port (Elliott Tate's `windows-release` commits and the October 1 to 4 CI runs) is in
+[status/WINDOWS_SOURCE_PORT_2026-10-04.md](status/WINDOWS_SOURCE_PORT_2026-10-04.md).
 
 ## What you need
 
 - Windows 10 or 11 on an x86-64 PC. The game module is compiled for `x86-64-v3` by default (AVX2, FMA, BMI2,
   MOVBE: Intel Haswell, AMD Zen or newer); the builder drops to an older level on older CPUs.
 - A GPU with Direct3D 12
-- [Visual Studio 2022 or newer](https://visualstudio.microsoft.com/) (Community is fine) with the
-  **Desktop development with C++** workload and the **C++ Clang Compiler for Windows** component
+- [Visual Studio 2026](https://visualstudio.microsoft.com/) (Community or Build Tools is fine), version 18.10 or
+  newer, with the **Desktop development with C++** workload and the **C++ Clang Compiler for Windows**
+  component. Visual Studio 2022 also builds: its clang (19) can't read the app's optimization profile
+  (`windows/pgo/app.profdata`, recorded with clang 22), so the builder says so and builds the app without it,
+  which leaves its graphics thread a little slower ([#153](https://github.com/chrissotraidis/bluewake/issues/153)).
+  `--no-app-pgo` does the same on any version.
 - [Python 3.10+](https://www.python.org/), [Git](https://git-scm.com/), and CMake 3.25+ and Ninja
   (`pip install cmake ninja` works)
 - Your disc image of *The Legend of Zelda: The Wind Waker*, GameCube USA (`GZLE01`, revision 0). An `.iso` or
@@ -100,23 +62,24 @@ Options (`--help` lists all):
 | `--source-only` | Stop after generating the source: checks your tools, disc and translation in a few minutes |
 | `--no-train` / `--no-pgo` | Explicitly skip local training and compile without a profile |
 | `--retrain` | Record a new local profile instead of reusing a matching one |
-| `--no-mods` | Skip the mods (widescreen 16:9 and 16:10, Better Wind Waker's options) |
-| `--prepared-blocks` | Opt into generic prepaid-block optimization; off by default, Windows timing/gameplay pending |
-| `--fixed-cpu` | Opt into experimental fixed-address CPU storage; off by default, requires the matching app |
-| `--fixed-mem1` | Also use module-owned RAM; requires `--fixed-cpu` and the matching app, off by default |
-| `--inline-fp` | Opt into inline floating-point helpers; off by default, module/gameplay/performance qualification pending |
-| `--gather-pipe` | Prepare experimental gather/inline-memory wrappers; off by default, host batching and module qualification remain separate gates |
-| `--direct-calls` | Prepare direct cross-chunk/indirect calls; off by default, matching host selection and qualification required |
-| `--native-j3d` | Prepare certified J3D matrix functions; off by default, host opt-in and module qualification required |
-| `--native-vec` | Prepare nine certified SDK vector functions; off by default, host opt-in and module qualification required |
-| `--native-game-math` | Prepare twelve certified game-math functions; off by default, host opt-in and module qualification required |
-| `--native-skin` | Prepare certified model skinning; off by default, host opt-in and module qualification required |
-| `--native-math` | Prepare four certified SDK matrix functions; off by default, host opt-in and module qualification required |
-| `--inline-gpr` | Also inline certified register saves/restores; requires `--direct-calls` |
+| `--host-only` | After pulling a change to the app's own code (`runtime/host/src`, `windows/src`): keep the last build's optimization profile instead of training again, so only what the change reaches recompiles |
+| `--no-mods` | Skip the mods (widescreen 16:9, 16:10 and 21:9, Better Wind Waker's options) |
+| `--conservative` | Build the plain translation. By default the builder prepares the same optimizations as Wind Waker Recomp's builds (prepaid blocks, fixed CPU and RAM storage, inline floating point and memory access, direct calls, register inlining, and the certified native J3D, vector, game-math, skinning and matrix functions); with `--conservative`, each `--...` option adds one back |
+| `--no-lean-blocks` | BlueWake's conservative prepaid block copies instead of Elliott Tate's lean ones (on by default since October 10, as Wind Waker Recomp's builds make them). The module is about a quarter smaller and compiles faster, and the game runs 5 to 12% slower ([PERFORMANCE.md](PERFORMANCE.md#results)) |
+| `--native-entries` | Elliott Tate's second and third native sets; off by default. They apply only where the translation matches what his builder produces, so they need the lean copies (the default) |
+| `--no-lean-memory` | Loads and stores in the prepaid copies as before Elliott Tate's lean memory (on by default since October 12), and so without lean deadlines either: about 5% slower. Lean memory changes nothing with `--no-lean-blocks` |
+| `--no-lean-deadlines` | Keeps the deadline test after every load and store. Lean deadlines (on by default since October 12) test it only on an access's way out of RAM, where the deadline can move: About 4 to 5% faster on a Mac, the same game state ([PERFORMANCE.md](PERFORMANCE.md#results)). `--native-entries` declines its natives with it, since their hashes cover the copies, so use `--no-lean-deadlines` with `--native-entries` |
+| `--no-behaviour-timing` | Checks the turn's budget after every block, as before behaviour timing. Behaviour timing (on by default since October 14) runs every block of game code from its prepaid copy, so a timer or an interrupt lands at the start of the next block instead of on its exact instruction, and the budget is checked where the code can loop. It was 7 to 9% faster on a Mac, 7 to 11% on two Intel desktops and 9% on the Steam Deck, with a module 8 to 15% smaller and a quicker build. The game state isn't identical to a build without it, but the 468-place stage select sweep and the sound came out the same, and it played normally on the Deck and on desktops ([the note](status/BEHAVIOUR_TIMING_2026-10-12.md), #215) |
+| `--no-cold` | Compile code the training never ran for speed too; slower in every test so far, so off |
 | `--jobs N` | Parallel compile jobs (default: the cores, as far as free memory allows) |
 | `--march LEVEL` | CPU level for the game module (default `x86-64-v3`) |
 | `--console` | Build `BlueWake.exe` as a console program |
 | `--out DIR` | Build directory (default `build\windows`) |
+
+A rebuild recompiles only the parts of the game module whose source changed. After a change to the app alone,
+such as a new setting or mod hook, a normal rebuild still trains again (the training plays the game with the
+app), which takes most of the time; `--host-only` skips that. Run it from the same checkout and `--out` as the
+build it updates.
 
 Local profiles stay inside the private build directory. Training uses new isolated
 data folders, original 30 Hz gameplay and interpolation off; it never uses the
@@ -130,7 +93,7 @@ Ninja's compile inputs.
 The independent `--native-j3d`, `--native-vec`, `--native-math`, `--native-skin` and `--native-game-math` options certify
 the original function bodies before other rewrites. `BLUEWAKE_NATIVE_J3D=1`,
 `BLUEWAKE_NATIVE_VEC=1`, `BLUEWAKE_NATIVE_MATH=1`, `BLUEWAKE_NATIVE_SKIN=1` and `BLUEWAKE_NATIVE_GAME_MATH=1` enable their respective
-supporting host/module paths
+supporting host/module paths on the Mac (the Windows and Linux hosts use them unless one is set to `0`)
 through versioned handshakes; absent support, disabled selection,
 unsupported inputs and observed boundaries retain translated execution.
 Matrix-array workers remain opt-in on macOS (`BLUEWAKE_NATIVE_WORKERS=1` through
@@ -138,8 +101,8 @@ Matrix-array workers remain opt-in on macOS (`BLUEWAKE_NATIVE_WORKERS=1` through
 and worker selection is separate from rendering interpolation.
 
 The direct-call options retain the ordinary module ABI and are selected separately
-from fixed CPU/RAM storage. To enable them in a supporting host, set
-`BLUEWAKE_DIRECT_CALLS=1`; default and older hosts use ordinary dispatch.
+from fixed CPU/RAM storage. The Windows and Linux hosts use them whenever the module
+supports them (`BLUEWAKE_DIRECT_CALLS=0` turns them off); older hosts use ordinary dispatch.
 The host must approve each skipped boundary, including scene observations,
 feature hooks and pending jump input. Register inlining also verifies the
 translated helper hashes and declines aliases, MMIO and write journals.
@@ -157,7 +120,7 @@ limits are tracked in the [reconciliation ledger](status/FORK_RECONCILIATION_202
 
 The `--gather-pipe` option also leaves the module ABI unchanged. It can be used
 with or without `--inline-fp` and records its helper hashes in build provenance.
-The host keeps direct FIFO writes off unless `BLUEWAKE_GATHER_PIPE=1` is set.
+The Windows and Linux hosts use direct FIFO writes with such a module unless `BLUEWAKE_GATHER_PIPE=0` is set.
 With that enabled, `BLUEWAKE_GATHER_PIPE_BATCH=1` additionally requests batching
 on a backend that supports byte writes. Both require a module prepared with
 `--gather-pipe`; older modules keep their ordinary MMIO path. FIFO diagnostic
@@ -179,21 +142,34 @@ Run `build\windows\BlueWake\BlueWake.exe`.
 | START | Return |
 | Camera | Click the game, then move the mouse (Esc releases it) |
 | Settings | F1 or Esc after releasing the mouse |
-| Jump / Run | Space / Shift; enable them in settings |
-| Fullscreen | F11 |
-| Smooth Motion | F10 |
+| Jump / Sprint | Space / Shift; turn on Jump & Sprint in settings (Gameplay) |
+| HD look | F2 |
+| Save state / load the latest | F5 / F8 |
+| Stage select | F7, once it's on in settings |
 | Frame rate | F9 |
+| Smooth Motion | F10 |
+| Fullscreen | F11 or Alt+Enter |
+
+A few words at the bottom left say what each key did.
 
 Game controllers work through SDL (Xbox, PlayStation, Switch Pro and others). The title screen wants A to reach
-the file menu. The mouse turns the game's own camera around Link and tilts it, and a left click is A; a
+the file menu. To choose which controller button presses each GameCube button, open settings and use
+**Controls › Controller buttons**. The optional controller zoom is
+also under **Controls**: when enabled, hold the right-stick click and move that stick up or down; a tap still
+enters or leaves first person. The mouse turns the game's own camera around Link and tilts it, and a left click is A; a
 cutscene, door, Z-target or first-person view takes the camera back.
+**Controls › Mouse buttons** sets what the left, middle, right and side buttons press, and **Keyboard keys**
+changes the GameCube buttons' keys. A controller SDL doesn't
+recognise works once its mapping is in a `gamecontrollerdb.txt` (from
+[SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB)) beside your saves; the session log's
+`[pad] N controller mappings` line shows it was read.
 
 Command-line options (`BlueWake.exe --help`):
 
 | Option | |
 | --- | --- |
 | `--widescreen` | 16:9: the widescreen mod (a wider camera, culling and HUD) with a 16:9 picture |
-| `--aspect 16:10` | 16:10 instead (`4:3` is the game's own) |
+| `--aspect 16:10` | 16:10 instead, or `--aspect 21:9` for ultrawide (`4:3` is the game's own) |
 | `--smooth` | Smooth Motion (experimental, off by default): 60 FPS, the renderer drawing a blended frame between each of the game's 30 |
 | `--betterww` | Better Wind Waker's settings at their defaults (Swift Sail, instant text, faster climbing...) |
 | `--options LIST` | Change them: `name,-name,...`, or `none,name,...` (names in `mods/betterww/options.txt`) |
@@ -220,6 +196,12 @@ never touches it:
 - `logs\session-*.log`: the newest eight sessions, one line a second of speed and timing plus anything that went
   wrong. Attach the relevant one to a bug report. If BlueWake crashes, the log says where.
 - Aurora's pipeline cache, so later launches start drawing sooner
+
+**Portable mode:** create an empty file named `portable.txt` next to `BlueWake.exe`, and BlueWake keeps all of
+this in a `user` folder beside it instead. To bring existing saves
+along, copy the contents of `%APPDATA%\BlueWake` into that `user` folder first. `scripts\windows\build.py --portable`
+puts `portable.txt` in the app folder for you; a later rebuild leaves the `user` folder and `portable.txt` alone. An `.iso` or `.gcm` disc image
+is read where it is in either mode; only Dolphin's compressed formats are unpacked to a copy.
 
 ## How the port works
 
@@ -264,7 +246,7 @@ clang (GNU driver, MSVC ABI) from Visual Studio.
 
 The Windows overlay saves display, camera, mod and audio choices in `settings.ini`; mods and audio mode
 apply after restart. Touch-layout editing and save-management screens remain iOS-specific.
-Windows optimization training and full end-to-end build/play verification remain pending.
+What each Windows release build was checked for is in [Windows tasks](WINDOWS_TASKS.md).
 
 The prepaid-block candidate has bounded correctness evidence on an M3 Max:
 30,000 cases across 14 SDK/J3D entries compare every CPU/RAM byte between two
@@ -302,34 +284,32 @@ The pinned runtime also fixes aliases in the host's extra 8 MiB of RAM; this
 fix applies to ordinary modules too. Sanitizer checks cover the memory contract,
 but full module correctness, Windows timing and gameplay are still pending.
 
-## Disc recovery in the reconciliation candidate
+## When the disc goes missing
 
-The launcher now accepts a replacement owned USA revision-0 disc when the
-prepared files/disc are missing. It validates and prepares a selected ISO/GCM,
-then remembers its location. Compressed inputs require nodtool.exe beside the
-app; the Windows builder copies its pinned nodtool when it is available. An
-ISO-only build can instead use an ISO converted locally in Dolphin. A missing
-player-generated module still requires the source build; choosing a disc alone
-does not create translated game code inside the launcher.
+If the prepared game files or the disc image BlueWake used before are gone, the
+launcher asks for your own USA revision-0 disc (GZLE01) again. It checks the
+image (its game ID and `main.dol`), prepares `main.dol` and the 415 RELs once,
+and remembers where the disc is. An `.iso` or `.gcm` is used where it is. A
+Dolphin image (`.rvz` and the other compressed formats) needs `nodtool.exe`
+beside the app: a folder you build yourself gets the builder's pinned nodtool
+when the builder has made one, and the ready-made release leaves it out because
+it embeds Wii keys, so with the release convert the image to an ISO in Dolphin
+first. The launcher prepares the
+disc's files; the translated game module comes from the builder or the
+ready-made release.
 
-Conversions and preparation use unique `disc-import-*` folders under the data
-directory. Failed/previous inputs and prepared files remain there. `disc.txt`
-remembers the disc and `game.txt` the completed preparation. Failed preparation
-does not overwrite the last prepared files; a missing REL invalidates the
-cached preparation. Saves/settings keep their existing paths and behavior.
-This retains Elliott Tate's disc UI/import foundation while replacing the
-fork's overwrite/delete recovery paths. No donor compiled distribution is used.
+Each conversion and preparation goes into a new `disc-import-*` folder in the
+data folder, and earlier folders stay. `disc.txt` remembers the disc and
+`game.txt` the finished preparation. A failed preparation keeps the last good
+files, and if a REL is missing the disc is prepared again. Saves and settings
+stay where they are. This builds on Elliott Tate's disc picker and importer
+(`windows/src/win_disc.c`); the Windows CI runs `bluewake_windows_disc_test`
+with stand-in importer results.
 
-Native source-only CI builds the launcher and a Win32 filesystem/process
-regression with synthetic importer results. Real owned-disc picking/conversion,
-Unicode paths, interruption, gameplay and physical Windows save/reload remain
-acceptance gates until recorded against this candidate.
-
-The Display tab offers 60 FPS, 120 FPS and Match the display (up to 240 FPS)
-for experimental Smooth Motion. Game logic stays at 30 Hz; Smooth Motion stays
-off until explicitly enabled. A slower or unknown display temporarily uses
-60 FPS and keeps a saved 120/display preference. Moving the window rechecks
-the display within a second. Overload pacing may reduce the displayed rate.
-`--smooth` explicitly selects 60 for that session without replacing a stored
-rate unless the player edits it. These settings are source-integrated; actual
-window movement and gameplay acceptance remain pending.
+**Smooth Motion** (experimental, off by default, F10): the Display tab offers
+60 FPS, 120 FPS and Match the display (up to 240 FPS). The game's logic stays
+at 30 Hz. A display slower than 120 Hz, or one whose rate isn't known yet, uses
+60 FPS and keeps the saved choice. BlueWake checks the display every second, so
+moving the window to another screen takes effect within a second. When the PC
+can't keep up, the shown rate can drop. `--smooth` turns it on at 60 FPS for
+that session and leaves a saved rate alone unless you change it in the menu.

@@ -174,13 +174,15 @@ static CGRect BWFrameAtNormalizedCenter(CGRect safe, CGFloat x, CGFloat y, CGFlo
 
 // The ellipsis button; the game is held while its menu is on screen.
 @interface BWMenuButton : UIButton
+@property(nonatomic, copy) void (^willShowMenu)(void);
 @end
 @implementation BWMenuButton
 - (void)contextMenuInteraction:(UIContextMenuInteraction*)interaction
     willDisplayMenuForConfiguration:(UIContextMenuConfiguration*)configuration
                            animator:(id<UIContextMenuInteractionAnimating>)animator {
     [super contextMenuInteraction:interaction willDisplayMenuForConfiguration:configuration animator:animator];
-    bluewake_touch_clear();
+    if (self.willShowMenu)
+        self.willShowMenu();
     bluewake_pause_set(BLUEWAKE_PAUSE_MENU, true);
 }
 - (void)contextMenuInteraction:(UIContextMenuInteraction*)interaction
@@ -208,6 +210,7 @@ static CGRect BWFrameAtNormalizedCenter(CGRect safe, CGFloat x, CGFloat y, CGFlo
 - (void)hideSettingsPanel;
 - (void)beginLayoutEditing;
 - (void)endLayoutEditing;
+- (void)clearTouchInput;
 - (void)tapIdentifier:(NSString*)identifier holdSeconds:(double)hold;
 @end
 
@@ -267,6 +270,7 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
             @BW_MOD_WIDESCREEN_1610_KEY : @([d boolForKey:@BW_MOD_WIDESCREEN_1610_KEY]),
             @BW_MOD_HD_TEXTURES_KEY : @([d boolForKey:@BW_MOD_HD_TEXTURES_KEY]),
             @BW_MOD_BETTERWW_KEY : @([d boolForKey:@BW_MOD_BETTERWW_KEY]),
+            @BW_HD_LOOK_KEY : @([d boolForKey:@BW_HD_LOOK_KEY]),
         };
         _buttons = [NSMutableArray array];
         _editGestures = [NSMutableArray array];
@@ -321,13 +325,19 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     float shown = 0, speed = 0, worst = 0;
     bluewake_fps_read(&shown, &speed, &worst);
     const float display = bluewake_fps_display();
-    if (display > shown + 5.0f)
+    const BOOL paused = bluewake_fps_smooth_paused();
+    if (paused)
+        // Each game frame shown twice: the picture moves at the game's rate.
+        _fpsLabel.text = [NSString stringWithFormat:@"%.0f FPS (Smooth Motion paused) · %.0f%% speed · %.0f ms",
+                                                    bluewake_fps_game(), speed, worst];
+    else if (display > shown + 5.0f)
         _fpsLabel.text = [NSString stringWithFormat:@"%.0f FPS (game %.0f) · %.0f%% speed · %.0f ms", display, shown,
                                                     speed, worst];
     else
         _fpsLabel.text = [NSString stringWithFormat:@"%.0f FPS · %.0f%% speed · %.0f ms", shown, speed, worst];
-    _fpsLabel.textColor = shown < 27.0f || speed < 95.0f ? [UIColor colorWithRed:1.0 green:0.8 blue:0.3 alpha:1.0]
-                                                         : UIColor.whiteColor;
+    _fpsLabel.textColor = paused || shown < 27.0f || speed < 95.0f
+                              ? [UIColor colorWithRed:1.0 green:0.8 blue:0.3 alpha:1.0]
+                              : UIColor.whiteColor;
 }
 
 - (UIViewController*)presenter {
@@ -338,7 +348,7 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
 }
 
 - (void)presentAlert:(UIAlertController*)alert {
-    bluewake_touch_clear();
+    [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
     [[self presenter] presentViewController:alert animated:YES completion:nil];
 }
@@ -356,6 +366,8 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
 
 - (void)buildMenuButton {
     _menuButton = [BWMenuButton buttonWithType:UIButtonTypeCustom];
+    __weak BWGameOverlay* weakSelf = self;
+    _menuButton.willShowMenu = ^{ [weakSelf clearTouchInput]; };
     UIImageSymbolConfiguration* symbol =
         [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
     [_menuButton setImage:[UIImage systemImageNamed:@"ellipsis" withConfiguration:symbol]
@@ -565,7 +577,10 @@ static void BWDumpMenu(UIMenuElement* element, int depth) {
     UIMenu* buttonMenu = [UIMenu menuWithTitle:@"Button Mapping" image:[UIImage systemImageNamed:@"circle.grid.2x2"]
                                     identifier:nil options:0 children:remaps];
     UIMenu* controllerMenu = [UIMenu menuWithTitle:@"Controller" image:[UIImage systemImageNamed:@"gamecontroller"]
-                                        identifier:nil options:0 children:@[ cameraMenu, buttonMenu ]];
+                                        identifier:nil options:0 children:@[
+        cameraMenu, buttonMenu, toggle(@"D-pad in Items and Quest Status", BW_DPAD_MENUS_KEY),
+        toggle(@"Gyro Aiming (move the controller to aim)", BW_GYRO_AIM_KEY),
+    ]];
 
     UIAction* removeDisc = [UIAction actionWithTitle:@"Remove Disc Image…" image:[UIImage systemImageNamed:@"trash"]
                                           identifier:nil handler:^(__kindof UIAction* a) {
@@ -691,9 +706,12 @@ static NSUInteger g_packFiles = NSNotFound;
     if (g_packFiles == NSNotFound) {
         g_packFiles = 0;
         NSDirectoryEnumerator* walk = [[NSFileManager defaultManager] enumeratorAtPath:[self texturePackDirectory]];
+        // Each texture once: its extra mip levels (name_mip1.png...) belong to it,
+        // as the desktop menus count (runtime/host/src/texture_pack_menu.h).
         for (NSString* path in walk) {
-            if ([path.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame ||
-                [path.pathExtension caseInsensitiveCompare:@"dds"] == NSOrderedSame)
+            if (([path.pathExtension caseInsensitiveCompare:@"png"] == NSOrderedSame ||
+                 [path.pathExtension caseInsensitiveCompare:@"dds"] == NSOrderedSame) &&
+                ![path.lastPathComponent.stringByDeletingPathExtension containsString:@"_mip"])
                 g_packFiles++;
         }
     }
@@ -707,8 +725,8 @@ static NSUInteger g_packFiles = NSNotFound;
                   @BW_MOD_WIDESCREEN_KEY),
         modToggle(@"Widescreen 16:10", @"For 16:10 screens, such as a Mac or an iPad", @"rectangle.expand.vertical",
                   @BW_MOD_WIDESCREEN_1610_KEY),
-        modToggle(@"HD Texture Pack", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
         modToggle(@"Better Wind Waker", bwwDetail, @"sailboat", @BW_MOD_BETTERWW_KEY),
+        modToggle(@"Wind Waker HD Look", @"Far islands, shading, cloud shadows, bloom", @"sparkles", @BW_HD_LOOK_KEY),
     ]];
     UIAction* installPack = [UIAction actionWithTitle:@"Install Texture Pack…"
                                                 image:[UIImage systemImageNamed:@"square.and.arrow.down"]
@@ -717,12 +735,17 @@ static NSUInteger g_packFiles = NSNotFound;
         [weakSelf chooseTexturePack];
     }];
     installPack.subtitle = @"Pick a folder of PNG or DDS textures";
-    UIMenu* add = [UIMenu menuWithTitle:@"Add Mods" image:nil identifier:nil options:UIMenuOptionsDisplayInline
-                               children:@[ installPack ]];
-    NSMutableArray<UIMenuElement*>* children = [NSMutableArray arrayWithObjects:toggles, add, nil];
+    // Wind Waker HD textures: first, as in the Mods tab of the Mac, Linux and
+    // Windows menus, with the same items in the same order.
+    UIMenu* hdTextures = [UIMenu menuWithTitle:@"Wind Waker HD Textures" image:nil identifier:nil
+                                       options:UIMenuOptionsDisplayInline children:@[
+        modToggle(@"HD Textures", packDetail, @"photo.stack", @BW_MOD_HD_TEXTURES_KEY),
+        installPack,
+    ]];
+    NSMutableArray<UIMenuElement*>* children = [NSMutableArray arrayWithObjects:hdTextures, toggles, nil];
     UIMenu* bww = [self betterWWSettingsMenu];
     if (bww != nil)
-        [children insertObject:bww atIndex:1];
+        [children insertObject:bww atIndex:2];
     return [UIMenu menuWithTitle:@"Mods" image:[UIImage systemImageNamed:@"wand.and.stars"] identifier:nil options:0
                         children:children];
 }
@@ -777,7 +800,7 @@ static NSUInteger g_packFiles = NSNotFound;
     _pickHandler = [handler copy];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
-    bluewake_touch_clear();
+    [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
     [[self presenter] presentViewController:picker animated:YES completion:nil];
 }
@@ -803,7 +826,7 @@ static NSUInteger g_packFiles = NSNotFound;
               work:(void (^)(UIAlertController* wait))work done:(void (^)(void))done {
     UIAlertController* wait = [UIAlertController alertControllerWithTitle:title message:message
                                                            preferredStyle:UIAlertControllerStyleAlert];
-    bluewake_touch_clear();
+    [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
     [[self presenter] presentViewController:wait animated:YES completion:^{
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
@@ -854,12 +877,12 @@ static NSUInteger g_packFiles = NSNotFound;
         g_packFiles = NSNotFound;
         [self refreshMenu];
         [self offerToTurnOn:@BW_MOD_HD_TEXTURES_KEY title:@"Already Installed"
-                    message:@"That folder is already in BlueWake's texture folder. HD Texture Pack uses it after "
+                    message:@"That folder is already in BlueWake's texture folder. HD Textures uses it after "
                             @"BlueWake restarts."];
         return;
     }
     const BOOL scoped = [source startAccessingSecurityScopedResource];
-    __block NSUInteger installed = 0, failed = 0;
+    __block NSUInteger installed = 0, textures = 0, failed = 0; // files, textures without their mip levels
     [self waitTitled:@"Installing Texture Pack" message:@"Copying textures…" work:^(UIAlertController* wait) {
         NSFileManager* fm = [NSFileManager new];
         [fm createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:nil];
@@ -873,12 +896,15 @@ static NSUInteger g_packFiles = NSNotFound;
             [fm createDirectoryAtPath:[to stringByDeletingLastPathComponent] withIntermediateDirectories:YES
                            attributes:nil error:nil];
             [fm removeItemAtPath:to error:nil];
-            if ([fm copyItemAtPath:from toPath:to error:nil])
+            if ([fm copyItemAtPath:from toPath:to error:nil]) {
                 installed++;
-            else
+                if (![rel.lastPathComponent.stringByDeletingPathExtension containsString:@"_mip"])
+                    textures++;
+            } else {
                 failed++;
+            }
             if (installed % 250 == 0) {
-                NSString* text = [NSString stringWithFormat:@"%lu textures copied…", (unsigned long)installed];
+                NSString* text = [NSString stringWithFormat:@"%lu files copied…", (unsigned long)installed];
                 dispatch_async(dispatch_get_main_queue(), ^{ wait.message = text; });
             }
         }
@@ -900,9 +926,9 @@ static NSUInteger g_packFiles = NSNotFound;
             [weakSelf presentAlert:alert];
             return;
         }
-        NSString* message = [NSString stringWithFormat:@"%lu textures were installed.%@ HD Texture Pack uses them "
+        NSString* message = [NSString stringWithFormat:@"%lu textures were installed.%@ HD Textures uses them "
                                                        @"after BlueWake restarts.",
-                                                       (unsigned long)installed,
+                                                       (unsigned long)textures,
                                                        failed ? [NSString stringWithFormat:@" %lu could not be copied.",
                                                                                            (unsigned long)failed]
                                                               : @""];
@@ -1345,7 +1371,7 @@ static NSString* BWQuestLogSummary(const BWQuestLog& log) {
         (void)type; (void)done; (void)items; (void)error;
         bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, false);
     };
-    bluewake_touch_clear();
+    [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_ALERT, true);
     [[self presenter] presentViewController:share animated:YES completion:nil];
 }
@@ -1517,6 +1543,7 @@ static NSString* BWQuestLogSummary(const BWQuestLog& log) {
 }
 
 - (void)clearTouchInput {
+    // Clear the overlay's state too: the next touch republishes the whole pad.
     for (BWGameButton* button in _buttons)
         button.transform = CGAffineTransformIdentity;
     _pad = BlueWakeTouchPad{};
@@ -1904,7 +1931,7 @@ static NSString* BWQuestLogSummary(const BWQuestLog& log) {
     _hideSwitch.on = BWBoolDefault(kHideOnControllerKey, YES);
     _editSwitch.on = NO;
     _settingsPanel.hidden = NO;
-    bluewake_touch_clear();
+    [self clearTouchInput];
     bluewake_pause_set(BLUEWAKE_PAUSE_SETTINGS, true);
     [self setNeedsLayout];
 }

@@ -1,62 +1,32 @@
-# Wind Waker Recomp is moving to BlueWake
+# Wind Waker Recomp is now BlueWake
 
-Updated October 3, 2026.
+Elliott Tate's [Wind-Waker-Recomp](https://github.com/elliotttate/Wind-Waker-Recomp) and BlueWake are one
+project, and BlueWake is where development continues. Bug reports, requests and pull requests go to
+[BlueWake's issues](https://github.com/chrissotraidis/bluewake/issues). Updated October 15, 2026.
 
-Elliott Tate's [Wind-Waker-Recomp](https://github.com/elliotttate/Wind-Waker-Recomp) and BlueWake are
-combining into one project. BlueWake is where development continues. This page tracks what is done
-and what is still open before Wind-Waker-Recomp points people here.
-
-New bug reports, feature requests and pull requests should go to
-[BlueWake](https://github.com/chrissotraidis/bluewake/issues).
+How the move happened, step by step, is in [the migration log](status/WIND_WAKER_RECOMP_MIGRATION_2026-10-04.md);
+the detailed evidence is in [the reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md).
 
 ## Done
 
-- Elliott's Windows port, rendering, camera, controls, settings, save state and performance
-  work through his v0.4.0 release is merged into BlueWake `main` ([#37](https://github.com/chrissotraidis/bluewake/pull/37),
-  [#38](https://github.com/chrissotraidis/bluewake/pull/38)). His commits keep his authorship, and
-  jointly adapted changes credit him as co-author.
-- The shared runtime lives in [chrissotraidis/RecompCore](https://github.com/chrissotraidis/RecompCore),
-  branch `bluewake-next`. BlueWake's dependency lock selects the exact commit.
-- On an Apple Silicon Mac, a complete build from a player's own disc works through PadMint and the
-  BlueWake builder: translation, local training, compilation and packaging. The result was played
-  with an actual game save followed by a separate reload.
-- On a physical iPad, an in-place update kept existing saves and settings, and an actual game save
-  reloaded correctly.
-- On Windows, the app builds and passes its automated tests in GitHub Actions.
-- Original 30 FPS game logic stays the default. Smooth Motion and experimental 60 FPS logic are off
-  unless a player turns them on.
+- Elliott's Windows port, rendering, camera, controls, settings, save states and speed work, through his v0.4.0
+  release and his later branch, are in `main` with his authorship (#37, #38, #40, #43, #45, #50, #52, #53).
+- His work since October 3 is being ported by hand, one pull request each: draw fusion (#225), faster single
+  loads (#228), return dispatch and the watch-list fix (#234, #235). The rest is in [GOAL_LOOP.md](GOAL_LOOP.md).
+- The shared runtime is [chrissotraidis/RecompCore](https://github.com/chrissotraidis/RecompCore), branch
+  `bluewake-next`; `config/dependencies.lock.json` pins the exact commit.
+- All 28 open issues moved on October 4 (#54 to #80, and #13), with the originals closed and linked. The
+  authors of its open pull requests were asked to reopen them here; the Android port is now #93.
+- Wind-Waker-Recomp's README, issue form and download links point here, and its releases were unpublished
+  (kept as drafts) on October 4. Elliott is a BlueWake collaborator.
+- Releases: Windows builds from `main` since 0.5.0 (October 5), the latest 0.7.0. Mac, iPhone and iPad: the app
+  without game code, and you build the game with PadMint. Linux: built from source since 0.7.0; a ready-made
+  AppImage is allowed and waits for a contributor's own-disc build ([AGENTS.md](../AGENTS.md#releases)).
 
 ## Open
 
-| Item | Owner | Status |
+| Item | Who | State |
 | --- | --- | --- |
-| Windows build and gameplay on real hardware | Elliott | Not started. Building and playing from your own disc on Windows has not been tested yet. [Checklist](WINDOWS_ACCEPTANCE.md). |
-| Elliott's work after v0.4.0 | BlueWake, reviewed by Elliott | His newer Windows branch adds a crash fix for loading save states, steadier Smooth Motion pacing, faster shader compilation, lighter graphics work and wider speed training. Not yet in BlueWake; importing it is part of the [stability plan](status/STABILITY_PLAN_2026-10-03.md). |
-| Random slowdowns | BlueWake | Player logs point to CPU-side graphics work in heavy scenes, Smooth Motion pausing after short hitches, and shader compilation. Plan, findings and log triage: [stability plan](status/STABILITY_PLAN_2026-10-03.md). |
-| Elliott's recent uncommitted fixes | Elliott | To arrive as BlueWake pull requests. |
-| Move open issues | Elliott | 26 open issues in Wind-Waker-Recomp (October 3) are to be recreated here with links back. GitHub cannot transfer issues between repositories owned by different accounts. The [stability plan](status/STABILITY_PLAN_2026-10-03.md) sorts them by whether they affect BlueWake. |
-| Move open pull requests | Elliott and authors | Wind-Waker-Recomp [#17](https://github.com/elliotttate/Wind-Waker-Recomp/pull/17) (center window on startup), [#15](https://github.com/elliotttate/Wind-Waker-Recomp/pull/15) (FPS overlay position) and [#13](https://github.com/elliotttate/Wind-Waker-Recomp/pull/13) (Android port) are to be reopened against BlueWake, keeping their authors. The Android port is new platform work, reviewed separately. |
-| Fresh build of current `main` | BlueWake | The iPad check used the current app with a game module built from an earlier revision. A completely fresh build from current `main` is next. |
-| Longer gameplay session | BlueWake | About 30 minutes of real play with a controller and audio on Mac and iPad, to catch problems short checks miss. |
-| Matched performance comparison | BlueWake and Elliott | Compare BlueWake with Wind-Waker-Recomp in the same scenes, settings and hardware. |
-| Pictobox freeze | BlueWake | [#13](https://github.com/chrissotraidis/bluewake/issues/13). A fix passes on Mac. Windows confirmation is part of the checklist above. |
-| Redirect notice on Wind-Waker-Recomp | Elliott | After Windows testing passes and issues are moved. |
-
-Linux, other game regions and an Android port are later work. They are not part of this move.
-
-## Releases
-
-Public app releases are paused until the maintainer's release audit is clear. Build BlueWake yourself
-from your own disc. Builds that contain game code are personal and must never be uploaded or shared;
-only source and app-only packages without game code may be published.
-
-## How to help
-
-- Windows testers with a Direct3D 12 GPU: follow the [Windows checklist](WINDOWS_ACCEPTANCE.md) and
-  report results in a BlueWake issue.
-- Report bugs with your platform, the BlueWake commit you built and steps to reproduce.
-- Attach your session log (iPhone/iPad: Help & Feedback › Share Session Log; Windows:
-  `%APPDATA%\BlueWake\logs`). `python3 scripts/triage_session_log.py LOG` summarizes one.
-- Keep game files, saves and personal builds out of issues and pull requests.
-
-Detailed evidence: [reconciliation ledger](status/FORK_RECONCILIATION_2026-10-02.md).
+| Wind-Waker-Recomp's repository description and archiving | Elliott (admin), with Chris | Not archived; its description still says "Personal source fork of BlueWake for The Wind Waker on iPhone and iPad". |
+| Elliott's work since October 3: natives rounds 4, 5 and 7, the upload and vertex changes | BlueWake | Each change's state is in [PERFORMANCE.md](PERFORMANCE.md#the-plan); the order is in [GOAL_LOOP.md](GOAL_LOOP.md). |
+| Elliott's HD renderer work (lighting, shadows, the GameCube/HD switch) | Elliott | Where it lives isn't known yet. BlueWake rebuilt the look itself, off by default ([WWHD_LOOK.md](WWHD_LOOK.md)), and #108's hotkey is in `main` as F2. |

@@ -12,6 +12,7 @@
 //     open, and resumes only when no reason remains (PRD FR-014/FR-015).
 #include <SDL3/SDL_events.h>
 #include <aurora/gfx.h>
+#include <aurora/aurora.h>
 #include <dolphin/pad.h>
 
 #include <algorithm>
@@ -57,6 +58,11 @@ std::atomic<unsigned> g_pause_reasons{0};
 //   draws     draw calls per presented frame
 std::atomic<float> g_fps_shown{0.f};
 std::atomic<float> g_fps_speed{0.f};
+// The game's own frames a second, and whether Smooth Motion's in-between frames
+// were paused (fewer than 90% of game frames interpolated): each game frame is
+// then shown twice, so the shown count reads 60 while the picture moves at 30.
+std::atomic<float> g_fps_game{0.f};
+std::atomic<bool> g_fps_smooth_paused{false};
 std::atomic<float> g_fps_worst_ms{0.f};
 
 void fps_tick() {
@@ -124,6 +130,12 @@ void fps_tick() {
     const double speed = (retrace - retrace0) / elapsed / 60.0 * 100.0;
     g_fps_shown = static_cast<float>(shown);
     g_fps_speed = static_cast<float>(speed);
+    g_fps_game = static_cast<float>((timing.display_copies - timing0.display_copies) / elapsed);
+    {
+        const unsigned long long frames = timing.interp_frames - timing0.interp_frames;
+        const unsigned long long interpolated = timing.interp_interpolated - timing0.interp_interpolated;
+        g_fps_smooth_paused = aurora_get_frame_interpolation() && frames > 0 && interpolated * 10 < frames * 9;
+    }
     g_fps_worst_ms = static_cast<float>(worst_ms);
     if (log_enabled && !paused_in_window) {
         const unsigned long long presents = timing.presents - timing0.presents;
@@ -318,6 +330,8 @@ extern "C" void bluewake_pause_set(unsigned reason, bool on) {
 extern "C" unsigned bluewake_pause_reasons(void) { return g_pause_reasons.load(); }
 
 extern "C" float bluewake_fps_display(void) { return aurora_get_fps(); }
+extern "C" float bluewake_fps_game(void) { return g_fps_game.load(); }
+extern "C" bool bluewake_fps_smooth_paused(void) { return g_fps_smooth_paused.load(); }
 
 extern "C" void bluewake_fps_read(float* shown, float* speed, float* worst_ms) {
     *shown = g_fps_shown.load();

@@ -201,10 +201,10 @@ What compiles and links, all under Apple Clang C++20 with
   "next smallest action", no top-of-file authority rule. `BLOCKERS.md`: 4,998
   lines, 66 such occurrences, with an authority rule at `:3-7`. OBSERVED.
 - `CURRENT.md:26` says 25–30% / 5–10%; `CURRENT.md:141` still says "from
-  35–45% to 25–35%". `docs/PORTING_HISTORY.md:318` asserts in the present
+  35–45% to 25–35%". `docs/archive/PORTING_HISTORY.md:318` asserts in the present
   tense that `TECH_DEBT.md` carries the 35–45% estimate. OBSERVED. Stale.
-- `docs/WAITING_FOR.md` has no supersession banner and lists as active a
-  promotion gate that `FINISH_LINE.md:15-18` says was cleared. `docs/HANDOFF.md:12-16`
+- `docs/archive/WAITING_FOR.md` has no supersession banner and lists as active a
+  promotion gate that `FINISH_LINE.md:15-18` says was cleared. `docs/archive/HANDOFF.md:12-16`
   shows a "CURRENT STATUS (2026-08-13)" heading under a banner declaring it
   superseded. OBSERVED.
 - No future-dated entries found. OBSERVED.
@@ -410,7 +410,7 @@ What compiles and links, all under Apple Clang C++20 with
   `origin/main`. Four `.card` files (98,412 bytes each, one SHA-256
   `6b43aabd…`) are "independent copies of the canonical seed card" per the
   directory README; eight `.log`/`.external-history.txt` files are execution
-  traces. `docs/PRD.md:398` requires saves and traces from gameplay to be
+  traces. `docs/archive/PRD.md:398` requires saves and traces from gameplay to be
   private and ignored. `GATES.md:5` already records P0 as `REGRESSED`.
 - INFERRED: whether a seed card counts as "derived game content" is a
   provenance question the user must answer, but the repository's own rule
@@ -906,7 +906,7 @@ Commands (all read-only): `git status --short`, `git log`,
 `git -C ref/{tww,aurora,dusk} log -1`, `git -C ref/tww ls-remote`. No
 build, no BlueWake process, no Simulator.
 
-Documents read in full: `docs/PRD.md`, `docs/GOAL_LOOP.md`,
+Documents read in full: `docs/archive/PRD.md`, `docs/GOAL_LOOP.md`,
 `docs/status/GATES.md`, `TECH_DEBT.md`, `REORIENTATION_2026-08-22.md`,
 `REORIENTATION_2026-09-01.md`, `INDEPENDENT_REVIEW_2026-08-25.md`,
 `INDEPENDENT_REVIEW_2026-08-30.md`, `EXECUTION_ROUTE_REVIEW_2026-09-01.md`,

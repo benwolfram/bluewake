@@ -56,6 +56,10 @@ void bluewake_fps_read(float* shown, float* speed, float* worst_ms);
 // Frames reaching the display a second, in-between frames included (equal to
 // the shown count when Display > Smooth Motion is off).
 float bluewake_fps_display(void);
+// The game's own frames a second, and whether Smooth Motion's in-between frames
+// were paused in the last second (the display then repeats each game frame).
+float bluewake_fps_game(void);
+bool bluewake_fps_smooth_paused(void);
 void bluewake_pause_set(unsigned reason, bool on);
 unsigned bluewake_pause_reasons(void);
 

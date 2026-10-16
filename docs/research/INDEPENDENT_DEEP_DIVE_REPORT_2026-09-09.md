@@ -1,5 +1,7 @@
 # Independent BlueWake deep-dive report — 2026-09-09
 
+> Historical research: the Route B prototype this report describes (a native build from the decompilation) was later removed, so the `route_b` paths it names no longer exist. Current work is in [GOAL_LOOP.md](../GOAL_LOOP.md).
+
 **Author:** independent senior reviewer (out of loop), at the user's request.
 **Audience:** the implementation agent running `docs/GOAL_LOOP.md`.
 **Status:** advisory and evidence-backed. `CURRENT.md` and the first entry of
@@ -99,8 +101,8 @@ than for the application. Evidence:
 | Item | Value |
 |---|---|
 | Repository HEAD | `6949c27` "Preserve active J3D vertex bindings and prepare optional Metal presentation", 2026-09-06 22:57 -0500 |
-| Dirty tracked files | `docs/status/BLOCKERS.md`, `docs/status/CURRENT.md`, `route_b/CMakeLists.txt`, `scripts/prepare_route_b.sh`, `tests/route_b_player_init_services.cpp`, `tests/route_b_player_phase_three_fences.cpp`, `tests/route_b_private_camera_run_probe.cpp` |
-| Untracked | `docs/status/NEXT_MODEL_HANDOFF_2026-09-06.md`, `docs/research/INDEPENDENT_DEEP_DIVE_PROMPT_2026-09-09.md`, `patches/tww/0209-compose-world-teardown-authentic-tiers.patch`, `patches/tww/0210-world-room-memory-tier.patch`, `tests/route_b_world_geometry_services.cpp` |
+| Dirty tracked files | `docs/archive/status/BLOCKERS.md`, `docs/status/CURRENT.md`, `route_b/CMakeLists.txt`, `scripts/prepare_route_b.sh`, `tests/route_b_player_init_services.cpp`, `tests/route_b_player_phase_three_fences.cpp`, `tests/route_b_private_camera_run_probe.cpp` |
+| Untracked | `docs/archive/status/NEXT_MODEL_HANDOFF_2026-09-06.md`, `docs/research/INDEPENDENT_DEEP_DIVE_PROMPT_2026-09-09.md`, `patches/tww/0209-compose-world-teardown-authentic-tiers.patch`, `patches/tww/0210-world-room-memory-tier.patch`, `tests/route_b_world_geometry_services.cpp` |
 | `ref/tww` | `03d27aa` (upstream 2026-08-18) + patches 0001-0209 applied + one unregistered hunk in `src/d/d_stage.cpp` (finding F3) |
 | `ref/aurora` | `8b690b6` (upstream 2026-08-20) + Aurora patches 0001/0002 applied (`git diff` shows only `GXManage.cpp`/`GXTexture.cpp`) |
 | `ref/recompcore` | `a5a7652`, with pre-existing user edits; protected files not touched by this review |
@@ -349,7 +351,7 @@ and visibly.
 ### F7 — The "Simulator constraint" blocking the visible test is a misreading (VERIFIED)
 
 The ledgers have deferred the visible test since Sep 6 pending "permission to
-close Simulator PID 43578". The policy sources (`docs/PRD.md` sections 13-14,
+close Simulator PID 43578". The policy sources (`docs/archive/PRD.md` sections 13-14,
 `GOAL_LOOP.md` 6.1, the private-probe banners) say: one active operator per
 Simulator/device, and never run more than one BlueWake process or Simulator at
 a time. The running process is Xcode's iOS `Simulator.app` (now PID 58388,

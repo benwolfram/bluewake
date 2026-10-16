@@ -2,6 +2,7 @@
 #include "gxruntime/aurora_backend.h"
 #include "gxruntime/headless_backend.h"
 #include "feature_dispatch.h"
+#include "stage_select.h"
 #include "gxruntime/guest_memory_dirty.h"
 #include "gxruntime/loader.h"
 #include "gxruntime/platform.h"
@@ -14,8 +15,10 @@
 #include "gxruntime/vi_clock.h"
 #include "gxruntime/aram.h"
 #include "core/cpu.h"
+#include "cache_flush_fallback.h"
 #include "StaticRecompABI.h"
 #include "../../../cmake/composite/module_cpu_contract.h"
+#include "../../../cmake/composite/direct_skip.h"
 #include <stdatomic.h>
 #include "aram_dma.h"
 #include "actor_search_budget.h"
@@ -29,8 +32,11 @@
 #include "guest_checkpoint.h"
 #include "edge_intercepts.h"
 #include "game_options.h"
+#include "forest_water.h"
+#include "hd_look.h"
 #include "fast_load.h"
 #include "fps_watch.h"
+#include "dpad_menus.h"
 #include "jump_button.h"
 #include "settings_menu.h"
 #include "sprint.h"
@@ -39,6 +45,7 @@
 #include "draw_tags.h"
 #include "mouse_camera.h"
 #include "callback_delivery.h"
+#include "dvd_completion.h"
 #include "cycle_domain.h"
 #include "interrupt_sources.h"
 #include "delivery_digest.h"
@@ -50,6 +57,7 @@
 #include "return_census.h"
 #include "scheduler_contract.h"
 #include "save_state.h"
+#include "status_line.h"
 #include "climb.h"
 #include "gxruntime/hle.h"
 #include <aurora/gfx.h>
@@ -71,6 +79,9 @@
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#endif
+#if defined(_WIN32)
+#include <SDL3/SDL_video.h>
 #endif
 
 #ifndef BLUEWAKE_ENABLE_DEVELOPER_TRACING
@@ -224,13 +235,17 @@ static DolAudioDma g_audio_dma;
 static BluewakeAudioCapture g_audio_capture;
 // SRAM on EXI channel 0 (ipl_sram.h); off unless BLUEWAKE_SRAM is set.
 static BluewakeIplSram g_ipl_sram;
-// EFB depth peeks (GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2)) answered
+// EFB peeks. GXPeekZ reads 0xC8400000 + (y << 12) + (x << 2) and is answered
 // from Aurora's asynchronous depth snapshot. Wind Waker's sun counts as visible
 // only where the peeked depth is far (0xFFFFFF); every peek used to read 0, so
 // the sun was always hidden and its glare and lens flare never drew. On with
 // the Aurora renderer (BLUEWAKE_EFB_PEEK=0 turns it off); Dolphin with EFB
 // access on, its setting for this game, draws the same glare (CURRENT.md,
 // 2026-09-24). The headless renderer, which the certified route uses, keeps 0.
+// GXPeekARGB reads 0xC8000000 + (y << 12) + (x << 2). The Picto Box paints each
+// actor's slot into that alpha and reads it back in the same frame; a read of 0
+// credits every pixel to whoever was registered first, so Lenzo is handed the
+// wrong person. The first peek of a frame drains the FIFO and copies the EFB.
 static bool g_efb_peek_enabled;
 static unsigned g_efb_peek_reports;
 static bool g_audio_capture_failure_reported;
@@ -275,6 +290,26 @@ BLUEWAKE_TRACE_STORAGE(g_rel_destructors_trace);
 BLUEWAKE_TRACE_STORAGE(g_rel_lifecycle_trace);
 BLUEWAKE_TRACE_STORAGE(g_rel_calls_trace);
 BLUEWAKE_TRACE_STORAGE(g_gx_entry_trace);
+// The GX entries BLUEWAKE_TRACE_GX_ENTRY reports (GXBegin, GXCopyDisp, GXLoadTexObj,
+// GXCallDisplayList, each up to the next function; Elliott Tate's 5edeacc). Only that
+// trace reads them, and builds with the trace never skip the chassis for a direct call
+// (host_direct_can_skip), so the builders' watch list (scripts/windows/direct_calls.py)
+// leaves them out: in release builds calls to them no longer go round the chassis loop.
+// bluewake-unwatched-begin
+static const u32 g_gx_entry_trace_ranges[][2] = {
+    {0x803230C4u, 0x803231B4u},
+    {0x80323D50u, 0x80323EACu},
+    {0x80324EE8u, 0x80324F3Cu},
+    {0x80326B80u, 0x80326BF0u},
+};
+// bluewake-unwatched-end
+
+static bool host_gx_entry_traced(u32 pc) {
+    for (size_t i = 0; i < sizeof g_gx_entry_trace_ranges / sizeof g_gx_entry_trace_ranges[0]; ++i)
+        if (pc >= g_gx_entry_trace_ranges[i][0] && pc < g_gx_entry_trace_ranges[i][1])
+            return true;
+    return false;
+}
 BLUEWAKE_TRACE_STORAGE(g_dispatch_terminal_trace);
 BLUEWAKE_TRACE_STORAGE(g_alarm_state_trace);
 static u32 g_pad_si_data_watch;
@@ -312,12 +347,24 @@ static u64 g_opening_complete_retrace;
 static bool g_outset_room_requested;
 static u64 g_outset_room_request_retrace;
 static u32 g_overlap_last_phase = UINT32_MAX;
+// The lazy overlap watch (on by default since October 12; BLUEWAKE_LAZY_OVERLAP=0 turns it off): the scene overlap watch below
+// (g_overlap_last_phase, g_overlap_terminal_phase, read only by diagnostics and
+// test routes) is sampled by the edge service and once a turn, instead of being
+// tested at every direct call and block edge, where it was about 7% of the game
+// thread. The guest runs the same; only when the host notices a phase changes.
+static bool g_lazy_overlap;
+// With the lazy watch, the player probe's control milestone (which the builders'
+// training openings must reach) still needs the overlap phase 6 that lasts only a
+// moment at the handover: the full watch stays on until control is admitted, and
+// the lazy path runs from there on, as in play.
+static bool g_overlap_watch_until_control;
 static u32 g_overlap_terminal_phase = UINT32_MAX;
 static bool g_name_character_jut_hold_reported;
 static bool g_name_character_jut_trigger_reported;
 static bool g_name_character_cpad_hold_reported;
 static bool g_name_character_cpad_trigger_reported;
 static BluewakePadEventSchedule g_title_pad_pulse;
+static u64 g_title_pad_delay;
 static BluewakePadEventSchedule g_title_confirm_pulse;
 static BluewakePadEventSchedule g_no_card_dismiss_pulse;
 static BluewakePadAxisEventSchedule g_no_save_left_pulse;
@@ -713,6 +760,20 @@ static u64 perf_now_us(clockid_t clock) {
 /* For the iOS shell's FPS display and per-second log: the guest retrace count
    (60 a second is full speed) and the emulation thread's CPU time. Read from
    the same thread that advances them. */
+// Windows and Linux builds prepare Wind Waker Recomp's optimization set by
+// default (scripts/windows/build.py and scripts/linux/build.py), so there an
+// optimization the module offers is used unless its variable is 0; elsewhere it
+// stays an opt-in (1). A module prepared without one does not offer it and
+// keeps the translated path.
+static bool host_feature_wanted(const char* name) {
+    const char* value = getenv(name);
+#if defined(_WIN32) || defined(__linux__)
+    if (value == NULL || value[0] == '\0')
+        return true;
+#endif
+    return value != NULL && strcmp(value, "1") == 0;
+}
+
 unsigned long long bluewake_host_retrace_count(void) { return g_host_retrace_count; }
 // Pipelines Aurora has created so far, for fps_watch's per-second shader-compile count.
 unsigned bluewake_host_pipelines_created(void) { return aurora_get_stats()->createdPipelines; }
@@ -784,17 +845,23 @@ static void host_mods_enable(void* lib, CPUState* cpu) {
         if (on && strcmp(mod, "betterww") == 0)
             g_options_mod = true;
     }
-    // The two widescreen mods patch the same code for different shapes; the
-    // composite has no variant for both. 16:10 wins over 16:9 if asked for both.
-    int ws169 = -1, ws1610 = -1;
-    for (u32 i = 0; i < available && name != NULL; ++i) {
-        const char* mod = name(i);
-        if (mod != NULL && strcmp(mod, "widescreen") == 0) ws169 = (int)i;
-        if (mod != NULL && strcmp(mod, "widescreen1610") == 0) ws1610 = (int)i;
-    }
-    if (ws169 >= 0 && ws1610 >= 0 && (g_mod_mask & (1u << ws169)) && (g_mod_mask & (1u << ws1610))) {
-        fprintf(stderr, "[mods] widescreen and widescreen1610 are exclusive; keeping widescreen1610\n");
-        g_mod_mask &= ~(1u << ws169);
+    // The widescreen mods patch the same code for different shapes; the
+    // composite has no variant for two of them. If asked for more than one,
+    // the first of these is kept: 21:9, then 16:10, then 16:9.
+    static const char* const kWidescreens[] = {"widescreen219", "widescreen1610", "widescreen"};
+    const char* kept = NULL;
+    for (size_t w = 0; w < sizeof kWidescreens / sizeof kWidescreens[0]; ++w) {
+        for (u32 i = 0; i < available && name != NULL; ++i) {
+            const char* mod = name(i);
+            if (mod == NULL || strcmp(mod, kWidescreens[w]) != 0 || !(g_mod_mask & (1u << i)))
+                continue;
+            if (kept == NULL) {
+                kept = mod;
+            } else {
+                fprintf(stderr, "[mods] %s and %s are exclusive; keeping %s\n", kept, mod, kept);
+                g_mod_mask &= ~(1u << i);
+            }
+        }
     }
     for (u32 i = 0; i < available && name != NULL; ++i) {
         const char* mod = name(i);
@@ -1039,6 +1106,10 @@ static unsigned g_di_read_reports;
 static unsigned g_vi_ack_reports;
 static unsigned g_dvd_open_reports;
 static unsigned g_dvd_read_reports;
+static bool g_deferred_dvd_enabled;
+static bool g_cache_flush_fallback_enabled;
+static BluewakeDvdCompletions g_dvd_completions;
+static unsigned g_dvd_completion_reports;
 static unsigned g_archive_reports;
 static unsigned g_dynamic_load_reports;
 static bool g_dynamic_link_header_reported;
@@ -1129,6 +1200,60 @@ static void host_trace_bgm_stream(CPUState* cpu, u32 address) {
 }
 #endif
 static unsigned g_audio_object_watch_reports;
+
+// Streamed music (the intro, cutscenes): one line whenever the track, its
+// playback state or its mute flag changes, read once per retrace and never
+// written. Shipping builds keep this so a player's log can say whether a
+// scene's music started. GZLE01 revision 0: JAIZelBasic's zel_basic SDA slot,
+// the stream object's sound and id, and the stream path buffer.
+static unsigned g_music_stream_reports;
+static unsigned g_music_dvd_reports;
+static u32 g_music_stream_last_id;
+static u8 g_music_stream_last_state, g_music_stream_last_disabled;
+static char g_music_stream_last_path[64];
+
+static void host_log_music_stream(CPUState* cpu) {
+    if (cpu == NULL || g_music_stream_reports >= 500u)
+        return;
+    const u32 slot = cpu->gpr[13] - 27088u;
+    if (slot < 0x80000000u || slot > 0x817FFFFCu)
+        return;
+    const u32 object = mem_read32(cpu, slot);
+    if (object < 0x80000000u || object > 0x817FFF80u)
+        return;
+    const u32 sound = mem_read32(cpu, object + 0x70u);
+    const u32 id = mem_read32(cpu, object + 0x7Cu);
+    const u8 disabled = mem_read8(cpu, object + 0x63u);
+    const u8 state = sound >= 0x80000000u && sound <= 0x817FFFBAu ? mem_read8(cpu, sound + 5u) : 0u;
+    char path[64] = {0};
+    for (unsigned i = 0u; i + 1u < sizeof path; ++i) {
+        path[i] = (char)mem_read8(cpu, 0x803ED130u + i);
+        if (path[i] == '\0') break;
+        if ((unsigned char)path[i] < 0x20u || (unsigned char)path[i] > 0x7Eu) { path[i] = '\0'; break; }
+    }
+    if (id == g_music_stream_last_id && state == g_music_stream_last_state &&
+        disabled == g_music_stream_last_disabled && strcmp(path, g_music_stream_last_path) == 0)
+        return;
+    // A state-4 sample alone does not prove sustained music (#97). These
+    // StreamLib fields distinguish a stop/finish from a stalled load in the
+    // next state-change line. Read only on transitions, not on every sample.
+    // Addresses: tww config/GZLE01/symbols.txt (revision 0).
+    fprintf(stderr,
+            "[music-stream] retrace=%llu path=\"%s\" id=0x%08X state=%u muted=%u "
+            "sound=0x%08X stop=%u/%u play=%u/%u decoded=%u playback_samples=%u "
+            "buffer_state=%u dvd_pending=%u starting=%u dsp_finished=%u\n",
+            (unsigned long long)g_host_retrace_count, path, id, state, disabled, sound,
+            mem_read8(cpu, 0x803F768Cu), mem_read8(cpu, 0x803F768Du),
+            mem_read8(cpu, 0x803F768Eu), mem_read8(cpu, 0x803F768Fu),
+            mem_read32(cpu, 0x803F7680u), mem_read32(cpu, 0x803F767Cu),
+            mem_read32(cpu, 0x803F7684u), mem_read32(cpu, 0x803F76C4u),
+            mem_read32(cpu, 0x803F76C8u), mem_read8(cpu, 0x803F76DAu));
+    g_music_stream_reports++;
+    g_music_stream_last_id = id;
+    g_music_stream_last_state = state;
+    g_music_stream_last_disabled = disabled;
+    memcpy(g_music_stream_last_path, path, sizeof path);
+}
 static unsigned g_audio_context_interrupt_reports;
 static unsigned g_audio_dsp_handler_reports;
 static unsigned g_audio_dsp_callback_reports;
@@ -1234,6 +1359,10 @@ static bool g_player_route_waiting;
 // same guest-state fingerprint at the same guest cycle in both configurations, so
 // the two runs can be compared to first difference instead of to first log line.
 static bool g_guest_state_trace_enabled;
+// The diagnostic switches above are set once at startup (main) and never change, so the
+// per-block checks read these two summaries instead of every switch on every block.
+static bool g_diagnostics_need_full;   // turn census, boundary census or service each block
+static bool g_diagnostics_block_skip;  // any diagnostic switch at all
 static u64 g_guest_state_trace_next = 100000ull;
 static unsigned g_guest_state_trace_reports;
 static u32 g_guest_checkpoint_interval;
@@ -1644,8 +1773,70 @@ static bool g_ground_cross_valid_seen;
 static bool g_ground_cross_sentinel_seen;
 static const char* g_ground_cross_stop_reason;
 
+// The traveling merchants (daNpcRoten_c) stand on rafts. Their setup asks the
+// ground check where the floor is and then moves them there even when that
+// floor is far below their feet. Under the Greatfish raft the check hits a
+// sea-floor polygon at about -4990, so the Goron is placed on it and never
+// comes back up: later checks only step him up onto ground that is already
+// above him. When this check is his, and the hit is that far down, report the
+// deck he spawned on instead. A real raft surface is near his feet and is
+// left alone.
+static void host_roten_stand_on_deck(CPUState* cpu) {
+    const u32 check = cpu->gpr[31];
+    const u32 ground_bits = mem_read32(cpu, check + 52u);
+    // -1e9 is "no ground". A hit above -2048 (any float whose high byte is
+    // below 0xC5) is a real surface; the sea floor that sinks him is -4990.
+    if (ground_bits == 0xCE6E6B28u || (ground_bits >> 24) < 0xC5u)
+        return;
+    const u32 caller = mem_read32(cpu, cpu->gpr[1] + 36u);
+    if (caller < 0x800A2EE8u || caller >= 0x800A305Cu)
+        return;
+    if (check < 0x800000D4u || check >= 0x82000000u)
+        return;
+    const u32 acch = check - 0xD4u;
+    const u32 pos = mem_read32(cpu, acch + 0x2Cu);
+    const u32 actor = mem_read32(cpu, acch + 0x80u);
+    if (pos < 0x80000000u || pos >= 0x82000000u || actor < 0x80000000u ||
+        actor >= 0x82000000u || pos != actor + 0x1F8u)
+        return;
+    const u32 param = mem_read32(cpu, actor + 0xB0u);
+    const unsigned npc = param >> 24;
+    if (npc > 2u || mem_read8(cpu, actor + 0x9BDu) != npc)
+        return;
+    // Greatfish and Mother & Child are 0xNNff0000. Bomb Island walks rail 7.
+    if (!((npc == 0u && param == 0x00070000u) ||
+          (npc != 0u && param == (npc << 24 | 0x00ff0000u))))
+        return;
+
+    const u32 current_bits = mem_read32(cpu, pos + 4u);
+    const u32 home_bits = mem_read32(cpu, actor + 0x1D4u);
+    float current_y, home_y;
+    memcpy(&current_y, &current_bits, sizeof current_y);
+    memcpy(&home_y, &home_bits, sizeof home_y);
+    // Deck heights from the sea stage, used only once he has already been
+    // buried (home was overwritten with the sea floor).
+    static const float kDeckY[3] = {638.414306640625f, 200.0f, 600.0f};
+    const float support = home_y > -100.0f ? home_y :
+                          current_y > -100.0f ? current_y : kDeckY[npc];
+    u32 support_bits;
+    memcpy(&support_bits, &support, sizeof support_bits);
+    mem_write32(cpu, check + 52u, support_bits);
+    cpu->fpr[1] = support;
+    mem_write32(cpu, actor + 0x1D4u, support_bits);
+    const u32 old_pos = mem_read32(cpu, acch + 0x30u);
+    if (old_pos >= 0x80000000u && old_pos < 0x82000000u)
+        mem_write32(cpu, old_pos + 4u, support_bits);
+    static bool logged;
+    if (!logged && current_y < -100.0f) {
+        logged = true;
+        fprintf(stderr, "[roten] merchant %u was under the raft (%.0f); standing at %.0f\n",
+                npc, current_y, support);
+    }
+}
+
 static void host_observe_ground_cross_return(CPUState* cpu,
                                              unsigned long long blocks) {
+    host_roten_stand_on_deck(cpu);
     const u32 check = cpu->gpr[31];
     const u32 ground_bits = mem_read32(cpu, check + 52u);
     const u32 return_bits = host_f32_bits(cpu->fpr[1]);
@@ -1847,14 +2038,16 @@ static void host_actor_search_native(CPUState* cpu) {
     g_actor_search_native_runs++;
 }
 
-static inline bool host_chassis_requires_full(const CPUState* cpu, u32 address) {
-    if (__builtin_expect(cpu == NULL || g_turn_census_enabled ||
-                             g_boundary_census_enabled ||
-                             g_chassis_service_each_block ||
-                             g_interrupt_sources_dirty,
-                         0))
-        return true;
-    if (g_name_scene_object >= 0x80000000u &&
+// The part of the full edge test that depends only on host state, not on the
+// address being dispatched. host_chassis_requires_full calls this first and
+// then the address-keyed checks; the direct-call skip path calls this alone
+// (see host_direct_can_skip), because the module has already proven the
+// address unwatched - and every address-keyed check below keys on an address
+// the watch list contains, so an unwatched address can never trip one.
+// The scene part of the dynamic test: an overlap phase change interrupt flags
+// alone do not describe.
+static inline bool host_chassis_overlap_requires_full(void) {
+    if ((!g_lazy_overlap || g_overlap_watch_until_control) && g_name_scene_object >= 0x80000000u &&
         (g_file_start_pulse.triggered || !g_file_start_pulse.configured)) {
         if (g_ppc_guest_alias_generation != g_overlap_cached_alias_state ||
             g_overlap_slot_ptr == NULL)
@@ -1868,6 +2061,24 @@ static inline bool host_chassis_requires_full(const CPUState* cpu, u32 address) 
                 return true;
         }
     }
+    return false;
+}
+
+static inline bool host_chassis_dynamic_requires_full(const CPUState* cpu) {
+    if (__builtin_expect(cpu == NULL || g_diagnostics_need_full || g_interrupt_sources_dirty, 0))
+        return true;
+    if (host_chassis_overlap_requires_full())
+        return true;
+    if ((cpu->msr & PPC_MSR_EE) != 0u &&
+        (g_guest_decrementer_pending ||
+         (g_interrupts.pi_cause & g_interrupts.pi_mask) != 0u))
+        return true;
+    return false;
+}
+
+static inline bool host_chassis_requires_full(const CPUState* cpu, u32 address) {
+    if (host_chassis_dynamic_requires_full(cpu))
+        return true;
     if (!g_new_game_intro_reported &&
         (address == 0x80018554u || address == 0x8001199Cu))
         return true;
@@ -1877,36 +2088,98 @@ static inline bool host_chassis_requires_full(const CPUState* cpu, u32 address) 
     if ((g_module1_raw_base != 0u && address == g_module1_raw_base + 0xD4u) ||
         bluewake_edge_maybe_intercept(host_canonical_linked_pc(address)))
         return true;
-    if ((cpu->msr & PPC_MSR_EE) != 0u &&
-        (g_guest_decrementer_pending ||
-         (g_interrupts.pi_cause & g_interrupts.pi_mask) != 0u))
-        return true;
     return false;
 }
 
 static bool g_direct_call_trace;
+// The host's answer for the module to read inline (direct_skip.h), with the
+// lazy overlap watch, when the answer depends on the address alone.
+// Conservative by construction: `simple` is off whenever an address-independent
+// check could refuse, and the address lists always include Forest Water's and
+// the draw tags' addresses whether or not those features are on.
+static BwHostSkipFast g_skip_fast = {0u, {0u, 0u}, {0xFFFFFFFFu, 0xFFFFFFFFu}, {0u, 0u}};
+static bool g_skip_fast_on;
+static bool g_skip_verify; // BLUEWAKE_DIRECT_SKIP_VERIFY=1: the counts at exit
+static void host_skip_fast_refresh(void) {
+    if (!g_skip_fast_on)
+        return;
+    g_skip_fast.single[0] = g_module1_raw_base != 0u ? g_module1_raw_base + 0xD4u : 0u;
+    g_skip_fast.single[1] = bluewake_forest_water_tree_timer_check;
+    g_skip_fast.range_first[0] = BLUEWAKE_PARTICLE_DRAW_FIRST;
+    g_skip_fast.range_span[0] = BLUEWAKE_PARTICLE_DRAW_LAST - BLUEWAKE_PARTICLE_DRAW_FIRST;
+    g_skip_fast.range_first[1] = BLUEWAKE_WAKE_DRAW_FIRST;
+    g_skip_fast.range_span[1] = BLUEWAKE_WAKE_DRAW_LAST - BLUEWAKE_WAKE_DRAW_FIRST;
+    g_skip_fast.simple = !g_diagnostics_block_skip && !bluewake_jump_button_armed &&
+                         !g_overlap_watch_until_control;
+}
 static u64 g_direct_call_queries, g_direct_call_allowed;
 
 /* Read-only handshake for direct calls. Use the same dynamic predicate as
  * ordinary edges, including overlap-phase changes that interrupt flags alone
  * do not describe. Feature ranges and an armed jump must retain their hooks. */
-static bool host_can_skip_observation(void* user, const CPUState* cpu, u32 address) {
-    (void)user;
+typedef bool (*CanSkipObservationFn)(void*, const CPUState*, u32);
+
+static inline __attribute__((always_inline)) bool host_can_skip_observation_body(
+    const CPUState* cpu, u32 address, bool stage_select) {
 #if BLUEWAKE_ENABLE_DEVELOPER_TRACING || BLUEWAKE_EDGE_CENSUS
-    (void)cpu; (void)address;
+    (void)cpu; (void)address; (void)stage_select;
     return false;
 #else
-    const bool allowed = !g_deadline_census_enabled && !g_delivery_safety_census_enabled &&
-           !g_guest_state_trace_enabled && !bluewake_jump_button_armed &&
+    const bool allowed = !g_diagnostics_block_skip && !bluewake_jump_button_armed &&
            !bluewake_feature_observes(address) &&
+           !(stage_select && bluewake_stage_select_observes(address)) &&
            !(address == BW_SEARCH_JUDGE_FILTER && g_actor_search_native) &&
            !host_chassis_requires_full(cpu, address);
     return allowed;
 #endif
 }
 
-static bool host_direct_can_skip(void* user, const CPUState* cpu, u32 address) {
-    const bool allowed = host_can_skip_observation(user, cpu, address);
+// The stage select is chosen at startup (its toggle takes a restart), so the
+// host registers this pair only when it is on and the usual pair otherwise:
+// with it off, nothing on the per-block path reads it.
+static bool host_can_skip_observation(void* user, const CPUState* cpu, u32 address) {
+    (void)user;
+    return host_can_skip_observation_body(cpu, address, false);
+}
+
+static bool host_can_skip_observation_stage_select(void* user, const CPUState* cpu, u32 address) {
+    (void)user;
+    return host_can_skip_observation_body(cpu, address, true);
+}
+
+static inline __attribute__((always_inline)) bool host_direct_can_skip_with(
+    const CPUState* cpu, u32 address, bool stage_select) {
+#if BLUEWAKE_ENABLE_DEVELOPER_TRACING || BLUEWAKE_EDGE_CENSUS
+    (void)cpu; (void)address; (void)stage_select;
+    const bool allowed = false;
+#else
+    // The direct-call skip is only ever permitted for addresses the module's
+    // watch list has already rejected (bw_edge_unwatched gates every actual
+    // skip), and that list is a superset of the intercept table and of every
+    // feature-observation address below. So the address-keyed checks the full
+    // predicate adds cannot fire here; run the dynamic-only predicate, which
+    // skips the intercept-table walk on the hot path. The one address-keyed
+    // check that must stay is the module-1 raw alias: g_module1_raw_base is a
+    // runtime value, not a compile-time literal, so it is the one address the
+    // watch list cannot guarantee. Of the feature checks, only two can see an
+    // address that list lacks: draw tags' ranges (it names their ends only) and
+    // Forest Water's tree-timer check, a linked address supplied at load. Each
+    // reads its live switch, so a feature turned on in game is still observed.
+    // The native actor search's filter (BW_SEARCH_JUDGE_FILTER) is a literal,
+    // so it is watched too.
+    // The module asks only once bw_host_quiet has passed: the interrupt sources
+    // are clean (it reads these flags, passed in direct_calls_v2) and no
+    // interrupt the guest would take is pending. Of the dynamic test that leaves
+    // the scene's overlap phase; the diagnostics are in g_diagnostics_block_skip.
+    // The stage select is checked here too when it is on: it is installed
+    // as a host-only change onto a module whose watch list may predate it.
+    const bool allowed = !g_diagnostics_block_skip && !bluewake_jump_button_armed &&
+           !(stage_select && bluewake_stage_select_observes(address)) &&
+           !bluewake_draw_tags_observes_range(address) &&
+           !(bluewake_forest_water_enabled && address == bluewake_forest_water_tree_timer_check) &&
+           !(g_module1_raw_base != 0u && address == g_module1_raw_base + 0xD4u) &&
+           !host_chassis_overlap_requires_full();
+#endif
     if (g_direct_call_trace) {
         g_direct_call_queries++;
         g_direct_call_allowed += allowed;
@@ -1914,11 +2187,27 @@ static bool host_direct_can_skip(void* user, const CPUState* cpu, u32 address) {
     return allowed;
 }
 
-static bool host_chassis_edge_service(void* user, CPUState* cpu, u32 address) {
+static bool host_direct_can_skip(void* user, const CPUState* cpu, u32 address) {
+    (void)user;
+    return host_direct_can_skip_with(cpu, address, false);
+}
+
+static bool host_direct_can_skip_stage_select(void* user, const CPUState* cpu, u32 address) {
+    (void)user;
+    return host_direct_can_skip_with(cpu, address, true);
+}
+
+static inline __attribute__((always_inline)) bool host_chassis_edge_service_with(
+    void* user, CPUState* cpu, u32 address, bool stage_select) {
 #if BLUEWAKE_ENABLE_DEVELOPER_TRACING
     host_trace_bgm_stream(cpu, address);
 #endif
     bluewake_feature_dispatch(cpu, address);
+    if (stage_select) {
+        bluewake_stage_select_dispatch(cpu, address);
+        if (bluewake_stage_select_redirect(cpu, address))
+            return true;
+    }
     if (bluewake_jump_button_dispatch(cpu, address))
         return true;
     if (host_chassis_requires_full(cpu, address))
@@ -1926,6 +2215,14 @@ static bool host_chassis_edge_service(void* user, CPUState* cpu, u32 address) {
     if (address == BW_SEARCH_JUDGE_FILTER && g_actor_search_native)
         host_actor_search_native(cpu);
     return false;
+}
+
+static bool host_chassis_edge_service(void* user, CPUState* cpu, u32 address) {
+    return host_chassis_edge_service_with(user, cpu, address, false);
+}
+
+static bool host_chassis_edge_service_stage_select(void* user, CPUState* cpu, u32 address) {
+    return host_chassis_edge_service_with(user, cpu, address, true);
 }
 
 // Host-only CPU state has no representation in the retail OSContext image.
@@ -2036,8 +2333,10 @@ static void host_spr_write(CPUState* cpu, u16 spr, u32 value, u32 cia) {
 static void host_cache_control(CPUState* cpu, u8 operation, u32 ea, u32 cia) {
     (void)cpu;
     (void)cia;
+    // A flush, not a write (guest_memory_dirty.h): images the GPU rendered
+    // into guest memory (EFB copies) keep their GPU copy (#263's red plane).
     if (operation == PPC_CACHE_DCBST || operation == PPC_CACHE_DCBF)
-        dol_guest_memory_dirty_mark(ea & ~31u, 32u);
+        dol_guest_memory_flush_mark(ea & ~31u, 32u);
 }
 
 static void heap_write_watch(u32 offset, u32 size, void* user) {
@@ -2487,6 +2786,93 @@ static bool host_materialize_rel(CPUState* cpu, const char* name, u32 owner,
     *guest_ptr = address;
     *byte_count = (u32)size;
     return true;
+}
+
+/* A load time for loose RELs (#318). The game's RELs come from RELS.arc, in
+   memory, or from loose files under /rels/ on the disc, which do_load reads
+   with JKRDvdToMainRam: on the console that read takes frames, on the disc
+   thread for an async load. BlueWake has every module resident, so the room's
+   loose-REL actors (d_a_shutter2 in the Wind Temple's R04 and R08) were
+   created before Link had finished. With BLUEWAKE_LOOSE_REL_RETRACES=N, a
+   load from /rels/ waits N retraces in VIWaitForRetrace on the thread that
+   asked, then completes as before; archived RELs stay instant, as on the
+   console. Unset or 0: off. */
+#define BLUEWAKE_DO_LOAD 0x80240744u
+#define BLUEWAKE_VI_WAIT_FOR_RETRACE 0x80313A04u
+#define BLUEWAKE_VI_RETRACE_COUNT 0x803F7B3Cu
+#define BLUEWAKE_MAX_LOOSE_REL_WAITS 8u
+
+typedef struct {
+    u32 stack;  /* r1: the thread that is waiting */
+    u32 object; /* r3: the DynamicModuleControl */
+    u32 lr;     /* do_load's caller */
+    u32 until;  /* retrace count to wait for */
+} BlueWakeLooseRelWait;
+
+static u32 g_loose_rel_retraces;
+static BlueWakeLooseRelWait g_loose_rel_waits[BLUEWAKE_MAX_LOOSE_REL_WAITS];
+static unsigned g_loose_rel_reports;
+
+static void host_loose_rel_configure(void) {
+    const char* retraces = getenv("BLUEWAKE_LOOSE_REL_RETRACES");
+    const long n = retraces != NULL ? strtol(retraces, NULL, 10) : 0;
+    g_loose_rel_retraces = n > 0 ? (u32)(n < 600 ? n : 600) : 0u;
+    fprintf(stderr, "[rel] loose REL load time=%s%u%s\n",
+            g_loose_rel_retraces != 0u ? "" : "off (", g_loose_rel_retraces,
+            g_loose_rel_retraces != 0u ? " retraces (BLUEWAKE_LOOSE_REL_RETRACES)" : ")");
+}
+
+/* At do_load's entry: true when the thread was sent to wait a retrace (cpu.pc
+   is VIWaitForRetrace, which returns to do_load's entry), false to load now. */
+static bool host_loose_rel_wait(CPUState* cpu) {
+    if (g_loose_rel_retraces == 0u)
+        return false;
+    const u32 now = mem_read32(cpu, BLUEWAKE_VI_RETRACE_COUNT);
+    // Back from VIWaitForRetrace: the caller's this and return address again.
+    if (cpu->lr == BLUEWAKE_DO_LOAD) {
+        for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i) {
+            BlueWakeLooseRelWait* wait = &g_loose_rel_waits[i];
+            if (wait->stack != cpu->gpr[1])
+                continue;
+            cpu->gpr[3] = wait->object;
+            if ((s32)(now - wait->until) < 0) {
+                cpu->pc = BLUEWAKE_VI_WAIT_FOR_RETRACE;
+                return true;
+            }
+            cpu->lr = wait->lr;
+            *wait = (BlueWakeLooseRelWait){0};
+            return false;
+        }
+        return false;
+    }
+    const u32 object = cpu->gpr[3];
+    if (object == 0u || mem_read32(cpu, object + 0x10u) != 0u)
+        return false;
+    char name[96] = {0};
+    const u32 name_address = mem_read32(cpu, object + 0x1Cu);
+    if (name_address == 0u)
+        return false;
+    guest_read_cstr(cpu, name_address, name, sizeof(name));
+    char path[128];
+    snprintf(path, sizeof(path), "/rels/%s.rel", name);
+    if (name[0] == '\0' || dvd_path_to_entrynum(path) < 0)
+        return false; // in RELS.arc: in memory on the console too
+    for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i) {
+        BlueWakeLooseRelWait* wait = &g_loose_rel_waits[i];
+        if (wait->stack != 0u)
+            continue;
+        *wait = (BlueWakeLooseRelWait){cpu->gpr[1], object, cpu->lr,
+                                       now + g_loose_rel_retraces};
+        if (g_loose_rel_reports < 64u) {
+            fprintf(stderr, "[rel] loose REL \"%s\" waits %u retraces from %u\n",
+                    name, g_loose_rel_retraces, now);
+            g_loose_rel_reports++;
+        }
+        cpu->lr = BLUEWAKE_DO_LOAD;
+        cpu->pc = BLUEWAKE_VI_WAIT_FOR_RETRACE;
+        return true;
+    }
+    return false; // more waiting threads than slots: load at once
 }
 
 static void host_zero_rel_bss(CPUState* cpu, const BlueWakeRelData* rel_data,
@@ -3206,6 +3592,18 @@ static u64 host_mmio_read(CPUState* ctx, u32 address, u8 size) {
     if (bluewake_ipl_sram_contains(&g_ipl_sram, address) && size == 4u)
         return bluewake_ipl_sram_read(&g_ipl_sram, address);
     if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
+        (address & 0x00C00000u) == 0u) {
+        const u16 x = (u16)((address >> 2) & 0x3FFu);
+        const u16 y = (u16)((address >> 12) & 0x3FFu);
+        // The id pass is still in the FIFO until this drain. One copy serves
+        // the rest of the viewfinder.
+        if (!aurora_color_peek_ready())
+            dol_platform_gx_flush();
+        u32 argb = 0u;
+        (void)aurora_peek_argb(x, y, &argb);
+        return argb;
+    }
+    if (g_efb_peek_enabled && size == 4u && (address & 0xFF000000u) == 0xC8000000u &&
         (address & 0x00C00000u) == 0x00400000u) {
         const u16 x = (u16)((address >> 2) & 0x3FFu);
         const u16 y = (u16)((address >> 12) & 0x3FFu);
@@ -3457,6 +3855,8 @@ static u32 si_load_be32(const u8* bytes, u32 offset) {
 static u16 host_pad_buttons(u32 channel, u16 fallback) {
     if (g_live_takeover)
         return fallback;
+    if (channel == 0u)
+        fallback = bluewake_stage_select_pad_buttons(g_host_retrace_count, fallback);
     if (channel == 0u && g_title_pad_pulse.configured)
         fallback = bluewake_pad_event_schedule_sample(
             &g_title_pad_pulse, g_host_retrace_count, fallback);
@@ -4186,9 +4586,14 @@ static void host_si_complete_pad_transfer(u32 control) {
     host_note_live_input(&live_pad[0]);
     bluewake_pad_merge(g_live_takeover ? &live_pad[channel] : &g_virtual_pad[channel],
                        &live_pad[channel], &merged_pad);
-    const DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+    DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+    u16 buttons = host_pad_buttons(channel, effective_pad.button);
+    if (channel == 0u) { // the D-pad in the item screens, on what the game will read
+        effective_pad.button = buttons;
+        bluewake_dpad_menus_apply(&effective_pad);
+        buttons = effective_pad.button;
+    }
     const DolPadState* pad = &effective_pad;
-    const u16 buttons = host_pad_buttons(channel, pad->button);
     host_pad_trace(channel, pad, buttons);
     u32 data0 = 0x09000000u; // SI_GC_CONTROLLER
     u32 data1 = 0u;
@@ -4293,9 +4698,14 @@ static void host_si_latch_pad_poll(void) {
         DolPadState merged_pad;
         bluewake_pad_merge(g_live_takeover ? &live_pad[channel] : &g_virtual_pad[channel],
                            &live_pad[channel], &merged_pad);
-        const DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+        DolPadState effective_pad = host_pad_state(channel, &merged_pad);
+        u16 buttons = host_pad_buttons(channel, effective_pad.button);
+        if (channel == 0u) { // the D-pad in the item screens, on what the game will read
+            effective_pad.button = buttons;
+            bluewake_dpad_menus_apply(&effective_pad);
+            buttons = effective_pad.button;
+        }
         const DolPadState* pad = &effective_pad;
-        const u16 buttons = host_pad_buttons(channel, pad->button);
         host_pad_trace(channel, pad, buttons);
         if (g_input_log_enabled && channel == 0u)
             host_input_log_read(pad, buttons);
@@ -4714,17 +5124,27 @@ static bool host_graphics_guest_resolve_uncached(
     // d_a_majuu_flag in Hyrule, 0xC0B928C0) was read from unrelated RAM at
     // 0x80B928C0 and failed to parse. The CPU resolves those addresses through
     // the alias registry; resolve graphics reads the same way.
+    //
+    // A game that writes a vertex array's base itself passes it through
+    // OSCachedToPhysical, which subtracts 0x80000000, so a module's data at
+    // 0xC06B0DA0 arrives as 0x406B0DA0. Nothing lives there on a GameCube, so
+    // look it up at the linked address it came from: Molgera's sand floor
+    // (d_a_bwdg's GFSetArray of its texture coordinates) was skipped every
+    // frame and the arena had no floor (issue #126).
     {
+        const u32 linked = (address & 0xC0000000u) == 0x40000000u
+                               ? address | 0x80000000u
+                               : address;
         u8* alias = NULL;
         u32 alias_offset = 0u;
         // The translation worker's thread: see g_guest_alias_lock.
         pthread_mutex_lock(&g_guest_alias_lock);
-        const bool aliased = ppc_guest_alias_resolve(address, size, &alias, &alias_offset);
+        const bool aliased = ppc_guest_alias_resolve(linked, size, &alias, &alias_offset);
         // Whether an alias holds the address at all: if none does, none holds
         // a range from it of any size, and the result below is every size's.
         u8* held = NULL;
         u32 held_offset = 0u;
-        *any_size = !aliased && !ppc_guest_alias_resolve(address, 1u, &held, &held_offset);
+        *any_size = !aliased && !ppc_guest_alias_resolve(linked, 1u, &held, &held_offset);
         pthread_mutex_unlock(&g_guest_alias_lock);
         if (aliased && alias != NULL) {
             *data = alias;
@@ -4981,6 +5401,8 @@ static void host_sync_vi_cycles(CPUState* cpu) {
     dol_vi_clock_advance(g_cycle_vi_clock, elapsed_cycles);
     while (dol_vi_clock_pop_retrace(g_cycle_vi_clock, NULL)) {
         g_host_retrace_count++;
+        host_log_music_stream(cpu);
+        bluewake_audio_watch_retrace(cpu, g_host_retrace_count);
 #if BLUEWAKE_ENABLE_DEVELOPER_TRACING
         host_trace_bgm_stream(cpu, 0u);
 #endif
@@ -4989,10 +5411,12 @@ static void host_sync_vi_cycles(CPUState* cpu) {
         bluewake_game_options_retrace(cpu);
         bluewake_mouse_camera_retrace();
         bluewake_jump_button_retrace();
+        host_skip_fast_refresh();  // the jump button may have armed
         bluewake_sprint_retrace();
         bluewake_fps_watch_retrace();
         bluewake_fast_load_retrace(bluewake_host_thread_cpu_us());
         bluewake_quick_doors_retrace();
+        bluewake_hd_look_retrace(cpu);
         bluewake_haptics_retrace();
         if (g_wall_pace_enabled && !bluewake_fast_load_fast_forward())
             host_wall_pace(g_host_retrace_count);
@@ -5513,6 +5937,18 @@ static bool configure_virtual_pad(DolHeadlessBackend* backend) {
             return false;
         }
         char* end = NULL;
+        // Let a diagnostic route exercise title-music -> intro transitions.
+        // Zero preserves the existing immediate route; no live input changes.
+        const char* title_delay = getenv("BLUEWAKE_PAD_TITLE_DELAY");
+        if (title_delay != NULL && title_delay[0] != '\0') {
+            g_title_pad_delay = strtoull(title_delay, &end, 10);
+            if (title_delay[0] == '-' || end == title_delay || *end != '\0' ||
+                g_title_pad_delay > 3600u) {
+                fprintf(stderr, "invalid BLUEWAKE_PAD_TITLE_DELAY=%s (0..3600 retraces)\n",
+                        title_delay);
+                return false;
+            }
+        }
         u64 event_length = 2u;
         if (pulse_length != NULL && pulse_length[0] != '\0') {
             event_length = strtoull(pulse_length, &end, 0);
@@ -5562,8 +5998,9 @@ static bool configure_virtual_pad(DolHeadlessBackend* backend) {
         g_virtual_pad[0].button = 0u;
         fprintf(stderr,
                 "[pad] channel 0 pulse armed on title-ready length=%llu "
-                "buttons=0x%04X\n",
-                (unsigned long long)event_length, g_pad_pulse_buttons);
+                "buttons=0x%04X delay=%llu\n",
+                (unsigned long long)event_length, g_pad_pulse_buttons,
+                (unsigned long long)g_title_pad_delay);
     }
     // The in-game save route (P4 milestone 9). Its own schedules: START, A,
     // and the two stick axes it steps the pause menu's cursor with. Off unless
@@ -5751,6 +6188,8 @@ static bool configure_virtual_pad(DolHeadlessBackend* backend) {
 }
 
 static void instruction_fallback(CPUState* ctx, u32 raw, u32 cia) {
+    if (g_cache_flush_fallback_enabled && bluewake_cache_flush_fallback(ctx, raw, cia))
+        return;
     if ((raw >> 26) == 31u) {
         u32 xo = (raw >> 1) & 0x3FFu;
         u16 spr = (u16)(((raw >> 16) & 0x1Fu) | ((raw >> 6) & 0x3E0u));
@@ -5963,8 +6402,8 @@ static bool host_bundle_defaults(char* module, size_t module_size) {
 #endif
 }
 
-/* BLUEWAKE_ASPECT: the picture's shape. 4:3 is the game's own; 16:10 and 16:9
-   turn on the matching widescreen mod (a wider camera, culling and HUD) and
+/* BLUEWAKE_ASPECT: the picture's shape. 4:3 is the game's own; 16:10, 16:9 and
+   21:9 turn on the matching widescreen mod (a wider camera, culling and HUD) and
    ask the renderer for a frame buffer of that shape (DOL_AURORA_ASPECT_RATIO),
    which also sizes the window unless DOL_AURORA_WINDOW does. Explicit
    BLUEWAKE_MODS or DOL_AURORA_ASPECT_RATIO settings are kept. */
@@ -5974,14 +6413,25 @@ static void host_apply_aspect(void) {
         return;
     const char* mod = NULL;
     const char* ratio = NULL;
+    float crop = 0.f;  // (4/3) / aspect
     if (strcmp(aspect, "16:10") == 0) {
         mod = "widescreen1610";
         ratio = "1.6";
+        crop = 5.f / 6.f;
     } else if (strcmp(aspect, "16:9") == 0) {
         mod = "widescreen";
         ratio = "1.7778";
+        crop = 3.f / 4.f;
+    } else if (strcmp(aspect, "21:9") == 0) {
+        mod = "widescreen219";
+        ratio = "2.3333";
+        crop = 4.f / 7.f;
+        // The picture is as tall as 4:3's (the camera widens, it does not
+        // look further up or down): the follow camera starts a little
+        // further back, as one notch of the wheel out would put it.
+        setenv("BLUEWAKE_CAMERA_DISTANCE", "1.12", 0);
     } else {
-        fprintf(stderr, "[aspect] unknown BLUEWAKE_ASPECT=%s (4:3, 16:10 or 16:9); keeping 4:3\n", aspect);
+        fprintf(stderr, "[aspect] unknown BLUEWAKE_ASPECT=%s (4:3, 16:10, 16:9 or 21:9); keeping 4:3\n", aspect);
         return;
     }
     setenv("DOL_AURORA_ASPECT_RATIO", ratio, 0);
@@ -5989,7 +6439,18 @@ static void host_apply_aspect(void) {
     char list[256];
     snprintf(list, sizeof list, "%s%s%s", mods && mods[0] ? mods : "", mods && mods[0] ? "," : "", mod);
     setenv("BLUEWAKE_MODS", list, 1);
-    fprintf(stderr, "[aspect] %s: mod %s, frame buffer %s\n", aspect, mod, getenv("DOL_AURORA_ASPECT_RATIO"));
+    // BLUEWAKE_PICTO_CROP=1 (off by default): a Picto Box photo is copied from
+    // the viewfinder (304x208 of the frame) into a 152x104 picture, so the
+    // wider camera's view came out squeezed to 4:3 / aspect of its width. The
+    // copy takes the middle of the view instead, what a 4:3 camera would have
+    // taken (RecompCore's aurora_set_copy_crop). The Picto Box and the Deluxe
+    // Picto Box (colour) make the same copy.
+    const char* picto_crop = getenv("BLUEWAKE_PICTO_CROP");
+    const bool picto = picto_crop != NULL && strcmp(picto_crop, "1") == 0;
+    if (picto)
+        aurora_set_copy_crop(152, 104, crop);
+    fprintf(stderr, "[aspect] %s: mod %s, frame buffer %s, Picto Box photos %s\n", aspect, mod,
+            getenv("DOL_AURORA_ASPECT_RATIO"), picto ? "cropped to 4:3" : "as the wide camera sees them");
 }
 
 // ---------------------------------------------------------------------------
@@ -6001,7 +6462,7 @@ static void host_apply_aspect(void) {
 //       save at the first clean point at or after that retrace (see below);
 //   BLUEWAKE_LOAD_STATE=path
 //       restore right after boot, before the first guest instruction runs;
-//   F5 / F9 (the window; fn-F5 / fn-F9 on a Mac keyboard), or the options
+//   F5 / F8 (the window; fn-F5 / fn-F8 on a Mac keyboard), or the options
 //   menu's Save state / Load latest state
 //       save to BLUEWAKE_STATE_DIR (default: the working directory; the Mac
 //       app's is its data folder's states/) as quick-<retrace>.bwstate / load
@@ -6009,7 +6470,7 @@ static void host_apply_aspect(void) {
 //       in that directory (after a relaunch).
 //   BLUEWAKE_LOAD_STATE_FORCE=1 loads a state made by another translation of
 //       the game (a different composite), which is otherwise refused.
-//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F9 at that retrace.
+//   BLUEWAKE_STATE_TEST_LOAD=retrace (testing) presses F8 at that retrace.
 //
 // Checked (headless, the Outset save walked by a pad script): a state saved
 // at retrace 1000 and loaded at boot, or mid-run at 900 or 1300, reaches
@@ -6044,9 +6505,9 @@ static void host_apply_aspect(void) {
 // When. A save waits for a clean point: the top of a turn whose pc is
 // GXSetDrawDone's return (0x80322BC8) - the frame's GX commands are complete,
 // so after a load the next frame is drawn whole - with no exception pending,
-// no REL prolog half done, no HLE card callback queued or running, no scene
-// change (overlap) or quick door under way. A request that has not met a
-// draw-done point within 120 retraces takes the next clean retrace boundary
+// no REL prolog half done or loose REL wait, no HLE card callback queued or
+// running, no scene change (overlap) or quick door under way. A request that
+// has not met a draw-done point within 120 retraces takes the next clean retrace boundary
 // instead (the GX front end carries any partial command either way).
 #define HOST_STATE_DRAW_DONE_PC 0x80322BC8u
 #define HOST_STATE_MAX_REQUESTS 8u
@@ -6121,6 +6582,7 @@ static const BwStateField k_host_state_fields[] = {
     HS_FIELD(g_di.status), HS_FIELD(g_di.cover), HS_FIELD(g_di.command),
     HS_FIELD(g_di.dma_address), HS_FIELD(g_di.dma_length), HS_FIELD(g_di.control),
     HS_FIELD(g_di.immediate_data), HS_FIELD(g_di.config),
+    HS_FIELD(g_dvd_completions),
     // Guest time: the decrementer, the cycle domain and each device's cursor.
     HS_FIELD(g_guest_clock_decrementer), HS_FIELD(g_guest_clock_decrementer_valid),
     HS_FIELD(g_guest_clock_decrementer_expired), HS_FIELD(g_guest_clock_cycle_remainder),
@@ -6129,8 +6591,8 @@ static const BwStateField k_host_state_fields[] = {
     HS_FIELD(g_vi_cycle_cursor), HS_FIELD(g_audio_cycle_cursor), HS_FIELD(g_dsp_cycle_cursor),
 #ifdef BLUEWAKE_HAS_DSP_ADAPTER
     HS_FIELD(g_dsp_adapter_interrupt_pending), HS_FIELD(g_dsp_adapter_slice_cycles),
-#endif
     HS_FIELD(g_dsp_adapter_update_elapsed), HS_FIELD(g_dsp_adapter_dma_count),
+#endif
     HS_FIELD(g_host_retrace_count), HS_FIELD(g_previous_retrace_timebase), HS_FIELD(g_vi_assert_reports),
     HS_FIELD(g_context_shadows), HS_FIELD(g_delivery_digest),
     HS_FIELD(g_async_draw_done_commits),
@@ -6411,6 +6873,15 @@ static bool host_state_load(const char* path, CPUState* cpu,
         fprintf(stderr, "[state] %s: invalid host or alias chunk\n", path);
         goto done;
     }
+    BluewakeDvdCompletions saved_dvd = {0};
+    const BwStateField dvd_field = {"g_dvd_completions", &saved_dvd, sizeof(saved_dvd)};
+    uint32_t dvd_mismatched = 0;
+    if (!bw_state_fields_unpack(&dvd_field, 1u, vars->data, vars->size,
+                                NULL, NULL, &dvd_mismatched) || dvd_mismatched != 0u ||
+        saved_dvd.count > BLUEWAKE_DVD_COMPLETION_CAPACITY) {
+        fprintf(stderr, "[state] %s: invalid DVD completion queue\n", path);
+        goto done;
+    }
     {
         u32 count;
         memcpy(&count, aliases->data, sizeof count);
@@ -6495,6 +6966,8 @@ static bool host_state_load(const char* path, CPUState* cpu,
 
     chunk = bw_state_find(&reader, "HOSTVARS");
     uint32_t restored = 0u, missing = 0u, mismatched = 0u;
+    // Old states have no pending queue. Never retain completions from the future.
+    memset(&g_dvd_completions, 0, sizeof(g_dvd_completions));
     if (chunk == NULL ||
         !bw_state_fields_unpack(k_host_state_fields,
                                 (u32)(sizeof k_host_state_fields / sizeof k_host_state_fields[0]),
@@ -6555,6 +7028,7 @@ static bool host_state_load(const char* path, CPUState* cpu,
     dol_guest_memory_dirty_mark(0x80000000u, cpu->ram_size);
     if (g_state_aurora)
         dol_aurora_set_fast_forward(false);
+    bluewake_fast_load_set_retrace(g_host_retrace_count);
     snprintf(g_state_last_path, sizeof g_state_last_path, "%s", path);
     ok = true;
     fprintf(stderr,
@@ -6583,7 +7057,7 @@ static const char* host_state_dir(void) {
     return ".";
 }
 
-// The newest .bwstate in the state directory: what F9 loads when this run has
+// The newest .bwstate in the state directory: what F8 loads when this run has
 // neither saved nor loaded one (after a relaunch).
 static bool host_state_latest(char* out, size_t size) {
     DIR* dir = opendir(host_state_dir());
@@ -6610,7 +7084,7 @@ static bool host_state_latest(char* out, size_t size) {
     return found;
 }
 
-// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F9 at that retrace, once.
+// BLUEWAKE_STATE_TEST_LOAD=retrace (testing only): F8 at that retrace, once.
 static u64 g_state_test_load_retrace;
 static bool g_state_test_load_done;
 
@@ -6654,7 +7128,35 @@ static void host_state_parse_requests(void) {
     }
 }
 
-// F5 / F9 from the window's event observer (mouse_camera.c), main thread.
+// The status line (status_line.h): posted by the game thread or the window's
+// key handlers, read by an overlay. The number is odd while the text is being
+// written, so a reader never copies half of one message.
+static char g_status_text[64];
+static atomic_uint g_status_seq;
+
+void bluewake_status_post(const char* text) {
+    atomic_fetch_add_explicit(&g_status_seq, 1u, memory_order_acq_rel);
+    snprintf(g_status_text, sizeof g_status_text, "%s", text);
+    atomic_fetch_add_explicit(&g_status_seq, 1u, memory_order_release);
+}
+
+unsigned bluewake_status_read(char* text, size_t size) {
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        const unsigned before = atomic_load_explicit(&g_status_seq, memory_order_acquire);
+        if (before & 1u)
+            continue;
+        if (size != 0) {
+            memcpy(text, g_status_text, size < sizeof g_status_text ? size : sizeof g_status_text);
+            text[size - 1] = '\0';
+        }
+        atomic_thread_fence(memory_order_acquire);
+        if (atomic_load_explicit(&g_status_seq, memory_order_relaxed) == before)
+            return before / 2u;
+    }
+    return 0u;
+}
+
+// F5 / F8 from the window's event observer (mouse_camera.c), main thread.
 void bluewake_save_state_hotkey(bool load) {
     if (load)
         g_state_hotkey_load = true;
@@ -6671,6 +7173,11 @@ static const char* host_state_unsafe_reason(const CPUState* cpu,
         return "REL prolog in progress";
     if (!dol_hle_callback_idle())
         return "memory card callback in flight";
+    // A parked guest thread needs its host-only object and return address.
+    // Keep the slot until that thread resumes, even if its deadline has passed.
+    for (u32 i = 0u; i < BLUEWAKE_MAX_LOOSE_REL_WAITS; ++i)
+        if (g_loose_rel_waits[i].stack != 0u)
+            return "loose REL load in progress";
     if (bluewake_quick_doors_busy())
         return "quick door in progress";
     if (mem_read32((CPUState*)cpu, 0x803F6160u) >= 0x80000000u)
@@ -6706,6 +7213,8 @@ static void host_state_try_save(CPUState* cpu, const StaticRecompModuleDesc* mod
                     (unsigned long long)g_host_retrace_count);
         if (waited > 3600u) {
             fprintf(stderr, "[state] no clean point for a minute; save dropped\n");
+            if (g_state_hotkey_save)
+                bluewake_status_post("State not saved: the game was busy");
             for (u32 i = 0; i < g_state_request_count; ++i)
                 if (g_state_requests[i].retrace <= g_host_retrace_count)
                     g_state_requests[i].done = true;
@@ -6730,7 +7239,7 @@ static void host_state_try_save(CPUState* cpu, const StaticRecompModuleDesc* mod
         mkdir(host_state_dir(), 0755);
         snprintf(path, sizeof path, "%s/quick-%llu.bwstate", host_state_dir(),
                  (unsigned long long)g_host_retrace_count);
-        host_state_save(path, cpu, mod, loop);
+        bluewake_status_post(host_state_save(path, cpu, mod, loop) ? "State saved" : "State not saved");
     }
     g_state_save_armed = false;
 }
@@ -6752,12 +7261,18 @@ static inline void host_state_turn(CPUState* cpu, const StaticRecompModuleDesc* 
             g_state_hotkey_load = false;
             const char* unsafe = host_state_unsafe_reason(cpu, loop);
             if (g_state_last_path[0] == '\0' &&
-                !host_state_latest(g_state_last_path, sizeof g_state_last_path))
-                fprintf(stderr, "[state] F9: no state in %s yet (F5 saves one)\n", host_state_dir());
-            else if (unsafe != NULL)
-                fprintf(stderr, "[state] F9: not now (%s)\n", unsafe);
-            else if (!host_state_load(g_state_last_path, cpu, mod, loop))
-                fprintf(stderr, "[state] F9: load failed; the machine may be inconsistent\n");
+                !host_state_latest(g_state_last_path, sizeof g_state_last_path)) {
+                fprintf(stderr, "[state] load: no state in %s yet (F5 saves one)\n", host_state_dir());
+                bluewake_status_post("No state yet (F5 saves one)");
+            } else if (unsafe != NULL) {
+                fprintf(stderr, "[state] load: not now (%s)\n", unsafe);
+                bluewake_status_post("State not loaded: the game was busy");
+            } else if (!host_state_load(g_state_last_path, cpu, mod, loop)) {
+                fprintf(stderr, "[state] load failed; the machine may be inconsistent\n");
+                bluewake_status_post("State not loaded");
+            } else {
+                bluewake_status_post("State loaded");
+            }
             g_state_poll_retrace = g_host_retrace_count;
             return;
         }
@@ -6770,6 +7285,16 @@ int main(int argc, char** argv) {
     // The options menu's saved choices, before anything reads the environment.
     bluewake_settings_load();
     host_apply_aspect();
+#if defined(__APPLE__) || defined(__ANDROID__)
+    // Draw fusion (RecompCore patch 0166, Elliott Tate): a display list's strips
+    // as one draw, a tenth of the draws. On for Windows and Linux, where it has
+    // been played (Linux: a Steam Deck, #215); off on the Mac and iPhone until
+    // it has been played there, and on Android, where it halves the draws but
+    // not the game thread's work (#93). DOL_GX_FUSE=1 turns it on, 0 off, everywhere.
+    setenv("DOL_GX_FUSE", "0", 0);
+#endif
+    fprintf(stderr, "[gx] draw fusion %s\n",
+            getenv("DOL_GX_FUSE") != NULL && getenv("DOL_GX_FUSE")[0] == '0' ? "off" : "on");
     const char* host_root = host_resolve_root();
     char dylib_scratch[4096 + 128];
     g_host_packaged_app = host_bundle_defaults(dylib_scratch, sizeof dylib_scratch);
@@ -7064,15 +7589,48 @@ int main(int argc, char** argv) {
     // when no window server is reachable.
     const bool renderer_requested = renderer != NULL && renderer[0] != '\0';
     if (!renderer_requested || strcmp(renderer, "aurora") == 0) {
+        // Where the window is created. Aurora shows it before the first frame,
+        // so a window moved afterwards is seen to jump. On Windows it opens
+        // centred, or at BLUEWAKE_WINDOW_POSITION=X,Y: where the player left
+        // it, which windows/src/win_settings.cpp passes on only while that spot
+        // is on a monitor. Elsewhere it opens where it always has.
+        int window_x = 0, window_y = 0;
+#if defined(_WIN32)
+        window_x = window_y = SDL_WINDOWPOS_CENTERED;
+        const char* window_position = getenv("BLUEWAKE_WINDOW_POSITION");
+        int saved_x = 0, saved_y = 0;
+        char trailing;  // anything after X,Y makes it malformed: centred
+        if (window_position != NULL &&
+            sscanf(window_position, "%d,%d%c", &saved_x, &saved_y, &trailing) == 2) {
+            window_x = saved_x;
+            window_y = saved_y;
+        }
+#endif
+        // Wayland FIFO present waits on the compositor for a free swapchain
+        // image, and that wait runs on the game thread. KWin 6.8 holds the
+        // image long enough to drop the game below full speed (several
+        // hundred milliseconds a second inside present). Mailbox returns
+        // immediately and the compositor still times the display.
+        // BLUEWAKE_VSYNC=1 keeps the blocking FIFO present.
+        const char* vsync_env = getenv("BLUEWAKE_VSYNC");
+        bool vsync = true;
+#if defined(__linux__)
+        if (getenv("WAYLAND_DISPLAY") != NULL)
+            vsync = false;
+#endif
+        if (vsync_env != NULL && vsync_env[0] != '\0')
+            vsync = vsync_env[0] != '0';
         const AuroraBackendConfig aurora_config = {
             .app_name = "BlueWake",
             .window_width = 960u,
             .window_height = 720u,
-            .vsync = true,
+            .vsync = vsync,
             .allow_texture_dumps = false,
             .info_logging = true,
             .graphics_logging = getenv("DOL_AURORA_RECOMP_GRAPHICS_LOG") != NULL,
             .force_untextured = false,
+            .window_pos_x = window_x,
+            .window_pos_y = window_y,
         };
         if (dol_aurora_initialize(argc, argv, &aurora_config)) {
             aurora_enabled = true;
@@ -7084,6 +7642,17 @@ int main(int argc, char** argv) {
             bluewake_settings_menu_install();
             fprintf(stderr, "[host] renderer=aurora window=%ux%u\n",
                     aurora_config.window_width, aurora_config.window_height);
+            // Which graphics API Aurora chose: OpenGL on a desktop is a fallback
+            // (Linux without its Vulkan loader ran the bird scene at 4%, #56).
+            const char* api = dol_aurora_backend_name();
+            fprintf(stderr, "[renderer] %s\n", api != NULL ? api : "unknown");
+#if !defined(__APPLE__)
+            if (api != NULL && strncmp(api, "OpenGL", 6) == 0)
+                fprintf(stderr,
+                        "[renderer] fell back to %s, which is much slower: install Vulkan (on Linux the "
+                        "Vulkan loader, libvulkan1 or vulkan-loader, and your GPU's Vulkan driver)\n",
+                        api);
+#endif
         } else if (renderer_requested) {
             fprintf(stderr, "[host] Aurora renderer initialization failed\n");
             return 1;
@@ -7249,6 +7818,34 @@ int main(int argc, char** argv) {
     g_di_read_reports = 0;
     g_dvd_open_reports = 0;
     g_dvd_read_reports = 0;
+    // Asynchronous disc reads complete after the caller returns, as on the
+    // hardware. Completing them inside the call left the music stream's load
+    // flag set, so the history intro after the title music played silently
+    // (#97). On by default everywhere since the Windows check for 0.6.0
+    // (docs/status/WINDOWS_BUILD_0.6.0.md). BLUEWAKE_DEFER_DVD_COMPLETION=0
+    // brings back the old path for a comparison.
+    const bool deferred_dvd_default = true;
+    const char* deferred_dvd = getenv("BLUEWAKE_DEFER_DVD_COMPLETION");
+    const bool deferred_dvd_set = deferred_dvd != NULL && deferred_dvd[0] != '\0';
+    g_deferred_dvd_enabled = deferred_dvd_set ? strcmp(deferred_dvd, "1") == 0 : deferred_dvd_default;
+    fprintf(stderr, "[dvd] deferred completion=%s (%s)\n", g_deferred_dvd_enabled ? "on" : "off",
+            deferred_dvd_set ? "BLUEWAKE_DEFER_DVD_COMPLETION" : "default");
+    host_loose_rel_configure();
+    {
+        const char* lazy = getenv("BLUEWAKE_LAZY_OVERLAP");
+        g_lazy_overlap = lazy == NULL || strcmp(lazy, "0") != 0;
+        g_overlap_watch_until_control = g_lazy_overlap && player_probe && getenv("BLUEWAKE_LOAD_STATE") == NULL;
+        fprintf(stderr, "[chassis] lazy overlap watch: %s%s\n",
+                g_lazy_overlap ? "on" : "off (BLUEWAKE_LAZY_OVERLAP=0)",
+                g_overlap_watch_until_control ? " (full until player control)" : "");
+    }
+    // The game's own cache flushes mark the texture cache's memory changed, so
+    // images it rewrites in place (the Pictobox preview, #13; the sea chart's
+    // island maps, #263) are read again. On by default; =0 turns it off.
+    const char* cache_flush = getenv("BLUEWAKE_CACHE_FLUSH_FALLBACK");
+    g_cache_flush_fallback_enabled = cache_flush == NULL || strcmp(cache_flush, "0") != 0;
+    fprintf(stderr, "[texture-cache] fallback writeback=%s\n",
+            g_cache_flush_fallback_enabled ? "on" : "off (BLUEWAKE_CACHE_FLUSH_FALLBACK=0)");
     g_archive_reports = 0;
     g_dynamic_load_reports = 0;
     g_dynamic_link_header_reported = false;
@@ -7266,6 +7863,7 @@ int main(int argc, char** argv) {
     g_rel_alias_raw_min = ~0u;
     g_rel_alias_raw_max = 0u;
     g_module1_raw_base = 0u;
+    host_skip_fast_refresh();
     g_module_alias_add_shared = NULL;
     g_module336_bss_alias_installed = false;
     dol_di_init(&g_di);
@@ -7612,6 +8210,11 @@ int main(int argc, char** argv) {
     // host_chassis_edge_service. BLUEWAKE_PER_BLOCK_TURNS=1 restores one turn
     // per block for a regression. (BLUEWAKE_CHASSIS_BUDGET is still honoured so
     // existing scripts keep working.)
+    // Before the per-block hooks are registered: they include the stage
+    // select's only when it is on (BLUEWAKE_STAGE_SELECT, its toggle or a warp).
+    bluewake_stage_select_attach();
+    CanSkipObservationFn skip_observation =
+        bluewake_stage_select_live ? host_can_skip_observation_stage_select : host_can_skip_observation;
     if (getenv("BLUEWAKE_PER_BLOCK_TURNS") == NULL) {
         g_chassis_service_each_block =
             getenv("BLUEWAKE_CHASSIS_SERVICE") != NULL;
@@ -7622,7 +8225,8 @@ int main(int argc, char** argv) {
         if (g_chassis_service_each_block)
             fprintf(stderr, "[chassis] service-each-block=on\n");
         if (set_edge_service)
-            set_edge_service(host_chassis_edge_service, &cpu);
+            set_edge_service(bluewake_stage_select_live ? host_chassis_edge_service_stage_select
+                                                        : host_chassis_edge_service, &cpu);
     }
     {
         typedef bool (*CanSkipFn)(void*, const CPUState*, u32);
@@ -7630,60 +8234,85 @@ int main(int argc, char** argv) {
                                      const u32*, CanSkipFn, void*);
         DirectCallsFn direct_calls = (DirectCallsFn)
             dlsym(lib, "bluewake_composite_direct_calls_v2");
+        typedef int (*DirectCallsV3Fn)(bool, const bool*, const bool*, const u32*,
+                                       const u32*, CanSkipFn, void*, const BwHostSkipFast*, bool);
+        DirectCallsV3Fn direct_calls_v3 = (DirectCallsV3Fn)
+            dlsym(lib, "bluewake_composite_direct_calls_v3");
         const char* direct_env = getenv("BLUEWAKE_DIRECT_CALLS");
         const char* direct_trace = getenv("BLUEWAKE_DIRECT_CALL_TRACE");
         g_direct_call_trace = direct_trace != NULL && strcmp(direct_trace, "1") == 0;
-        const bool want = direct_env != NULL && strcmp(direct_env, "1") == 0 &&
+        (void)direct_env;
+        const bool want = host_feature_wanted("BLUEWAKE_DIRECT_CALLS") &&
                           getenv("BLUEWAKE_PER_BLOCK_TURNS") == NULL &&
                           dlsym(lib, "bluewake_set_edge_service") != NULL;
-        const bool enabled = direct_calls != NULL && direct_calls(
-            want, &g_interrupt_sources_dirty, &g_guest_decrementer_pending,
-            &g_interrupts.pi_cause, &g_interrupts.pi_mask, host_direct_can_skip, NULL);
+        // With the lazy overlap watch the host's answer depends on the address
+        // alone, so a module that can (v3) reads it inline instead of calling
+        // the host at every direct call. Not with the stage select, which has
+        // its own checks, or with the call trace, which counts the calls.
+        const char* verify_env = getenv("BLUEWAKE_DIRECT_SKIP_VERIFY");
+        bool want_fast = g_lazy_overlap && direct_calls_v3 != NULL && !bluewake_stage_select_live &&
+                         !g_direct_call_trace;
+#if BLUEWAKE_ENABLE_DEVELOPER_TRACING || BLUEWAKE_EDGE_CENSUS
+        want_fast = false;
+#endif
+        const bool verify = verify_env != NULL && strcmp(verify_env, "1") == 0;
+        g_skip_verify = verify;
+        bool enabled;
+        if (want_fast) {
+            g_skip_fast_on = true;
+            host_skip_fast_refresh();
+            enabled = direct_calls_v3(
+                want, &g_interrupt_sources_dirty, &g_guest_decrementer_pending,
+                &g_interrupts.pi_cause, &g_interrupts.pi_mask, host_direct_can_skip, NULL,
+                &g_skip_fast, verify);
+            g_skip_fast_on = enabled;
+        } else {
+            enabled = direct_calls != NULL && direct_calls(
+                want, &g_interrupt_sources_dirty, &g_guest_decrementer_pending,
+                &g_interrupts.pi_cause, &g_interrupts.pi_mask,
+                bluewake_stage_select_live ? host_direct_can_skip_stage_select : host_direct_can_skip, NULL);
+        }
         typedef int (*EdgeFilterFn)(bool);
         EdgeFilterFn edge_filter = (EdgeFilterFn)
             dlsym(lib, "bluewake_composite_edge_filter");
         if (edge_filter != NULL)
             edge_filter(enabled);
-        fprintf(stderr, "[chassis] direct-calls=%s\n", enabled ? "on" : "off");
+        fprintf(stderr, "[chassis] direct-calls=%s inline-answer=%s%s\n", enabled ? "on" : "off",
+                g_skip_fast_on ? "on" : "off", g_skip_fast_on && verify ? " (verify)" : "");
     }
     {
         typedef int (*NativeJ3DFn)(bool, bool (*)(void*, const CPUState*, u32), void*);
         NativeJ3DFn native_j3d = (NativeJ3DFn)dlsym(lib, "bluewake_composite_native_j3d_v1");
-        const char* native_env = getenv("BLUEWAKE_NATIVE_J3D");
-        const bool want = native_env != NULL && strcmp(native_env, "1") == 0;
-        const bool enabled = native_j3d != NULL && native_j3d(want, host_can_skip_observation, NULL);
+        const bool want = host_feature_wanted("BLUEWAKE_NATIVE_J3D");
+        const bool enabled = native_j3d != NULL && native_j3d(want, skip_observation, NULL);
         fprintf(stderr, "[chassis] native-j3d=%s\n", enabled ? "on" : "off");
     }
     {
         typedef int (*NativeGameMathFn)(bool, bool (*)(void*, const CPUState*, u32), void*);
         NativeGameMathFn native_game_math = (NativeGameMathFn)dlsym(lib, "bluewake_composite_native_game_math_v1");
-        const char* native_env = getenv("BLUEWAKE_NATIVE_GAME_MATH");
-        const bool want = native_env != NULL && strcmp(native_env, "1") == 0;
-        const bool enabled = native_game_math != NULL && native_game_math(want, host_can_skip_observation, NULL);
+        const bool want = host_feature_wanted("BLUEWAKE_NATIVE_GAME_MATH");
+        const bool enabled = native_game_math != NULL && native_game_math(want, skip_observation, NULL);
         fprintf(stderr, "[chassis] native-game-math=%s\n", enabled ? "on" : "off");
     }
     {
         typedef int (*NativeSkinFn)(bool, bool (*)(void*, const CPUState*, u32), void*);
         NativeSkinFn native_skin = (NativeSkinFn)dlsym(lib, "bluewake_composite_native_skin_v1");
-        const char* native_env = getenv("BLUEWAKE_NATIVE_SKIN");
-        const bool want = native_env != NULL && strcmp(native_env, "1") == 0;
-        const bool enabled = native_skin != NULL && native_skin(want, host_can_skip_observation, NULL);
+        const bool want = host_feature_wanted("BLUEWAKE_NATIVE_SKIN");
+        const bool enabled = native_skin != NULL && native_skin(want, skip_observation, NULL);
         fprintf(stderr, "[chassis] native-skin=%s\n", enabled ? "on" : "off");
     }
     {
         typedef int (*NativeVecFn)(bool, bool (*)(void*, const CPUState*, u32), void*);
         NativeVecFn native_vec = (NativeVecFn)dlsym(lib, "bluewake_composite_native_vec_v1");
-        const char* native_env = getenv("BLUEWAKE_NATIVE_VEC");
-        const bool want = native_env != NULL && strcmp(native_env, "1") == 0;
-        const bool enabled = native_vec != NULL && native_vec(want, host_can_skip_observation, NULL);
+        const bool want = host_feature_wanted("BLUEWAKE_NATIVE_VEC");
+        const bool enabled = native_vec != NULL && native_vec(want, skip_observation, NULL);
         fprintf(stderr, "[chassis] native-vec=%s\n", enabled ? "on" : "off");
     }
     {
         typedef int (*NativeMathFn)(bool, bool (*)(void*, const CPUState*, u32), void*);
         NativeMathFn native_math = (NativeMathFn)dlsym(lib, "bluewake_composite_native_math_v1");
-        const char* native_env = getenv("BLUEWAKE_NATIVE_MATH");
-        const bool want = native_env != NULL && strcmp(native_env, "1") == 0;
-        const bool enabled = native_math != NULL && native_math(want, host_can_skip_observation, NULL);
+        const bool want = host_feature_wanted("BLUEWAKE_NATIVE_MATH");
+        const bool enabled = native_math != NULL && native_math(want, skip_observation, NULL);
         fprintf(stderr, "[chassis] native-math=%s\n", enabled ? "on" : "off");
     }
     BluewakeSetGatherWord set_gather_word = (BluewakeSetGatherWord)
@@ -7693,13 +8322,18 @@ int main(int argc, char** argv) {
     const BluewakeGatherMode gather_mode = bluewake_gather_pipe_configure(
         set_gather_word, set_gather_bytes, dol_platform_gx_write,
         dol_platform_gx_write_bytes_available() ? dol_platform_gx_write_bytes : NULL,
-        getenv("BLUEWAKE_GATHER_PIPE"), getenv("BLUEWAKE_GATHER_PIPE_BATCH"),
+        host_feature_wanted("BLUEWAKE_GATHER_PIPE") ? "1" : "0", getenv("BLUEWAKE_GATHER_PIPE_BATCH"),
         g_gx_fifo_trace || BLUEWAKE_EDGE_CENSUS);
     fprintf(stderr, "[chassis] gather-pipe=%s\n",
             gather_mode == BLUEWAKE_GATHER_BATCH ? "batch" :
             gather_mode == BLUEWAKE_GATHER_DIRECT ? "direct" : "off");
     host_mods_enable(lib, &cpu);
     bluewake_game_options_enable(lib, &cpu, g_options_mod);
+    bluewake_forest_water_set_ftree_text(
+        host_rel_section_linked_start(mod, 317u, 1u));
+    host_skip_fast_refresh();  // Forest Water's tree-timer address
+    bluewake_forest_water_reload();
+    bluewake_hd_look_reload();
     bluewake_mouse_camera_attach(&cpu);
     bluewake_climb_attach(&cpu);
     bluewake_jump_button_attach(&cpu);
@@ -7709,6 +8343,7 @@ int main(int argc, char** argv) {
     bluewake_quick_doors_attach(&cpu);
     bluewake_draw_tags_attach(&cpu);
     bluewake_haptics_attach(&cpu);
+    bluewake_dpad_menus_attach(&cpu);
 
     unsigned long long blocks = 0;
     const char* stop_reason = NULL;
@@ -7759,6 +8394,9 @@ int main(int argc, char** argv) {
         getenv("BLUEWAKE_DELIVERY_SAFETY_CENSUS") != NULL;
     g_guest_state_trace_enabled =
         getenv("BLUEWAKE_GUEST_STATE_TRACE") != NULL;
+    g_diagnostics_need_full = g_turn_census_enabled || g_boundary_census_enabled || g_chassis_service_each_block;
+    g_diagnostics_block_skip = g_diagnostics_need_full || g_deadline_census_enabled ||
+                               g_delivery_safety_census_enabled || g_guest_state_trace_enabled;
 #ifdef BLUEWAKE_HAS_DSP_ADAPTER
     {
         const char* dsp_rate_env = getenv("BLUEWAKE_DSP_RATE");
@@ -8064,11 +8702,14 @@ int main(int argc, char** argv) {
            (max_retraces == 0ull ||
             g_host_retrace_count < max_retraces)) {
         host_state_turn(&cpu, mod, &state_loop);
+        host_skip_fast_refresh();  // a turn's host work (state loads, input) may have changed it
         g_current_host_block = blocks;
         bluewake_cycle_domain_begin_turn(&g_cycle_domain, &cpu);
         if (dol_platform_should_quit()) { stop_reason = "quit"; break; }
+        if (bluewake_stage_select_stop) { stop_reason = "warp-arrived"; break; }
         bluewake_card_runtime_service_callback(&cpu);
         bluewake_card_runtime_dispatch(&cpu);
+        bluewake_forest_water_dispatch(&cpu, cpu.pc);
         if (g_host_retrace_count != scene_milestone_last_retrace) {
             scene_milestone_last_retrace = g_host_retrace_count;
             const u32 open_scene = host_find_scene_by_proc_name(&cpu, 0x000Eu);
@@ -8245,6 +8886,10 @@ int main(int argc, char** argv) {
                 if (!player_control_admitted &&
                     player_control_hold_retraces >= 8u) {
                     player_control_admitted = true;
+                    if (g_overlap_watch_until_control) {
+                        g_overlap_watch_until_control = false;
+                        host_skip_fast_refresh();
+                    }
                     fprintf(stderr,
                             "[player-milestone] control-admitted retrace=%llu "
                             "event_mode=%u demo_type=%u demo_mode=%u ovl=%u "
@@ -9097,6 +9742,8 @@ int main(int argc, char** argv) {
                     cpu.gpr[7], cpu.lr, resource_name);
             g_resource_info_reports++;
         }
+        if (cpu.pc == 0x80240744u && host_loose_rel_wait(&cpu))
+            continue;
         if (g_dynamic_load_reports < 8u &&
             (cpu.pc == 0x80240744u || cpu.pc == 0x80240A48u)) {
             char module_name[96] = {0};
@@ -9157,7 +9804,10 @@ int main(int argc, char** argv) {
                     const u32 module_id = mem_read32(&cpu, module);
                     host_zero_rel_bss(&cpu, rel_data, rel_data_count, module_id);
                     if (module_id == 1u)
+                    {
                         g_module1_raw_base = module;
+                        host_skip_fast_refresh();
+                    }
                     // This is the host-side completion of the authentic
                     // do_link contract: the static composite supplies the
                     // linked module body, so publish module 1's profile-list
@@ -10812,7 +11462,7 @@ int main(int argc, char** argv) {
                     mem_read32(&cpu, 0x803F7B3Cu), cpu.gpr[3],
                     (unsigned long long)blocks);
             if (bluewake_pad_event_schedule_trigger(
-                    &g_title_pad_pulse, g_host_retrace_count)) {
+                    &g_title_pad_pulse, g_host_retrace_count + g_title_pad_delay)) {
                 fprintf(stderr,
                         "[pad] title-ready pulse trigger start=%llu length=%llu "
                         "buttons=0x%04X\n",
@@ -11128,6 +11778,10 @@ int main(int argc, char** argv) {
             const u32 title_proc = mem_read32(&cpu, cpu.gpr[31] + 0x298u);
             if (title_proc >= 0x80000000u &&
                 mem_read32(&cpu, title_proc + 0x30u) == 1u &&
+                (g_title_pad_delay == 0u ||
+                 (g_host_retrace_count >= g_title_pad_pulse.start_retrace +
+                                             g_title_pad_pulse.length &&
+                  host_guest_cpad_a_released(&cpu))) &&
                 bluewake_pad_event_schedule_trigger(
                     &g_title_confirm_pulse, g_host_retrace_count)) {
                 fprintf(stderr,
@@ -12091,7 +12745,11 @@ int main(int argc, char** argv) {
             const u32 file_start = mem_read32(&cpu, file_info + DVD_FI_STARTADDR);
             const u32 file_length = mem_read32(&cpu, file_info + DVD_FI_LENGTH);
             const u32 callback_data = mem_read32(&cpu, file_info + 0x3Cu);
-            const bool valid = file_info != 0u && address != 0u &&
+            const bool defer = g_deferred_dvd_enabled && !synchronous;
+            if (defer && g_dvd_completions.count >= BLUEWAKE_DVD_COMPLETION_CAPACITY)
+                fprintf(stderr, "[dvd] async read rejected: completion queue full\n");
+            const bool valid = (!defer || g_dvd_completions.count < BLUEWAKE_DVD_COMPLETION_CAPACITY) &&
+                               file_info != 0u && address != 0u &&
                                offset <= file_length &&
                                length <= file_length - offset + DVD_MIN_TRANSFER_SIZE;
             const u64 read_end = (u64)address + (u64)length;
@@ -12117,12 +12775,26 @@ int main(int argc, char** argv) {
                         mem_read32(&cpu, 0x80AD2148u),
                         mem_read32(&cpu, 0x80AD214Cu));
             }
-            mem_write32(&cpu, file_info + DVD_CB_STATE, 0u);
-            mem_write32(&cpu, file_info + DVD_CB_CURRXFER, valid ? length : 0u);
-            mem_write32(&cpu, file_info + DVD_CB_XFERRED, valid ? length : 0u);
+            mem_write32(&cpu, file_info + DVD_CB_STATE, defer && valid ? 1u : 0u);
+            mem_write32(&cpu, file_info + DVD_CB_CURRXFER, valid && !defer ? length : 0u);
+            mem_write32(&cpu, file_info + DVD_CB_XFERRED, valid && !defer ? length : 0u);
             cpu.gpr[3] = synchronous ? (valid ? length : 0u) : (valid ? 1u : 0u);
             cpu.pc = cpu.lr & ~3u;
-            if (!synchronous && valid && callback != 0u) {
+            if (defer && valid) {
+                // A nonzero device latency prevents completion inside its caller.
+                // One guest millisecond is a compatibility floor, not a disc-speed model.
+                const BluewakeDvdCompletion completion = {
+                    .ready_cycle = g_cycle_domain.absolute_cycles + GUEST_CPU_CYCLES_PER_SECOND / 1000u,
+                    .callback = callback, .file_info = file_info, .length = length,
+                };
+                if (!bluewake_dvd_enqueue(&g_dvd_completions, completion))
+                    stop_reason = "DVD completion queue overflow";
+            } else if (!synchronous && valid && callback != 0u) {
+                const bool trace_music_read = callback == 0x8029D1C8u &&
+                                              g_music_dvd_reports < 4u;
+                const u32 music_pending_before = trace_music_read ?
+                    mem_read32(&cpu, 0x803F76C4u) : 0u;
+                const u32 callback_return = cpu.pc;
                 if (g_dvd_read_reports < 4u)
                     fprintf(stderr,
                             "[dvd] callback-enter callback=0x%08X result=%u "
@@ -12133,6 +12805,15 @@ int main(int argc, char** argv) {
                                                     length, file_info, 4096u,
                                                     host_prepare_guest_dispatch,
                                                     &g_cycle_domain);
+                if (trace_music_read) {
+                    fprintf(stderr,
+                            "[music-dvd] retrace=%llu callback=0x%08X return=0x%08X "
+                            "msr=0x%08X pending_before=%u pending_after=%u completed=%u\n",
+                            (unsigned long long)g_host_retrace_count, callback,
+                            callback_return, cpu.msr, music_pending_before,
+                            mem_read32(&cpu, 0x803F76C4u), delivery.completed ? 1u : 0u);
+                    g_music_dvd_reports++;
+                }
                 if (!delivery.completed) {
                     fprintf(stderr,
                             "[dvd] callback incomplete callback=0x%08X pc=0x%08X "
@@ -13485,10 +14166,7 @@ int main(int argc, char** argv) {
             bg_postmethod_trace_reports++;
         }
         if (g_gx_entry_trace && gx_entry_trace_reports < 64u &&
-            ((dispatch_input_pc >= 0x803230C4u && dispatch_input_pc < 0x803231B4u) ||
-             (dispatch_input_pc >= 0x80323D50u && dispatch_input_pc < 0x80323EACu) ||
-             (dispatch_input_pc >= 0x80324EE8u && dispatch_input_pc < 0x80324F3Cu) ||
-             (dispatch_input_pc >= 0x80326B80u && dispatch_input_pc < 0x80326BF0u))) {
+            host_gx_entry_traced(dispatch_input_pc)) {
             fprintf(stderr,
                     "[gx-entry] pc=0x%08X lr=0x%08X r3=0x%08X r4=0x%08X "
                     "r5=0x%08X r6=0x%08X blocks=%llu\n",
@@ -15124,6 +15802,32 @@ int main(int argc, char** argv) {
                 g_credit_lag_max = lag;
         }
         host_sync_cycle_devices_end_turn(&cpu);
+        BluewakeDvdCompletion completion;
+        if (g_dvd_completions.count != 0u &&
+            bluewake_dvd_take_ready(&g_dvd_completions, g_cycle_domain.absolute_cycles,
+                (cpu.msr & PPC_MSR_EE) != 0u && cpu.exception == 0u &&
+                bluewake_scheduler_interrupt_safe(cpu.pc), &completion)) {
+            mem_write32(&cpu, completion.file_info + DVD_CB_STATE, 0u);
+            mem_write32(&cpu, completion.file_info + DVD_CB_CURRXFER, completion.length);
+            mem_write32(&cpu, completion.file_info + DVD_CB_XFERRED, completion.length);
+            bool completed = true;
+            if (completion.callback != 0u) {
+                const BluewakeCallbackDeliveryResult delivery = bluewake_deliver_guest_callback(
+                    &cpu, mod, completion.callback, completion.length, completion.file_info,
+                    4096u, host_prepare_guest_dispatch, &g_cycle_domain);
+                // This callback runs after the regular end-of-turn flush.
+                // Account for its last block before begin_turn resets downcount.
+                (void)bluewake_cycle_domain_flush(&g_cycle_domain, &cpu);
+                host_sync_cycle_devices_end_turn(&cpu);
+                completed = delivery.completed;
+                if (!completed)
+                    stop_reason = "deferred DVD callback delivery";
+            }
+            if (g_dvd_completion_reports++ < 8u || !completed)
+                fprintf(stderr, "[dvd-completion] callback=0x%08X file=0x%08X bytes=%u "
+                        "completed=%u pending=%u\n", completion.callback, completion.file_info,
+                        completion.length, completed ? 1u : 0u, g_dvd_completions.count);
+        }
         if (g_delivery_safety_census_enabled) {
             if (g_guest_decrementer_pending) {
                 g_decrementer_pending_turns++;
@@ -15363,6 +16067,15 @@ int main(int argc, char** argv) {
 
     printf("[run] stopped: %s after %llu blocks at pc=%#010x\n",
            stop_reason ? stop_reason : "normal", blocks, cpu.pc);
+    if (g_skip_fast_on && g_skip_verify) {
+        typedef void (*SkipCountsFn)(unsigned long long*, unsigned long long*, unsigned long long*);
+        SkipCountsFn skip_counts = (SkipCountsFn)dlsym(lib, "bluewake_composite_direct_skip_counts");
+        unsigned long long unsafe = 0ull, conservative = 0ull, inline_answers = 0ull;
+        if (skip_counts != NULL)
+            skip_counts(&unsafe, &conservative, &inline_answers);
+        fprintf(stderr, "[direct-skip] verify: inline=%llu unsafe=%llu conservative=%llu\n", inline_answers,
+                unsafe, conservative);
+    }
     fprintf(stderr,
             "[collision-provenance] summary ground_cross_returns=%llu "
             "deferred_fp=%llu valid_seen=%u sentinel_seen=%u\n",

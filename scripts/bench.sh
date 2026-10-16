@@ -70,7 +70,7 @@ dsp_irom="${BLUEWAKE_DSP_IROM:-$root/ref/recompcore/Data/Sys/GC/dsp_rom.bin}"
 dsp_coef="${BLUEWAKE_DSP_COEF:-$root/ref/recompcore/Data/Sys/GC/dsp_coef.bin}"
 
 canonical_card_sha=6b43aabd94f00ae3de01b42567b5d11026cf6a9374e4d023565b31bf3c7e1987
-# Re-derived once under decision D1 (docs/GOAL_PROMPT_V16_2026-09-14.md): the
+# Re-derived once under decision D1 (docs/archive/GOAL_PROMPT_V16_2026-09-14.md): the
 # route selector no longer gates on the delivery-timing aggregate, because that
 # aggregate is the interrupt-acceptance schedule the cap owns. Both caps produce
 # this digest on the completed pair; every guest-state record is unchanged and

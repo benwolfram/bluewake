@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # BlueWake: launch the game the way a human plays it.
 #
-# M1 of docs/GOAL_PROMPT_2026-09-14.md. Needs no exported variables: it finds
+# M1 of docs/archive/GOAL_PROMPT_2026-09-14.md. Needs no exported variables: it finds
 # the repository from its own location, opens the Aurora window, plays audio
 # through the default output device, and merges live keyboard and pad input.
 #
@@ -217,7 +217,7 @@ fi
 export BLUEWAKE_ROOT="$root"
 export BLUEWAKE_RENDERER="$renderer"
 # The same cap the benchmark now ships as its default, with the pair that
-# adopted it recorded in docs/GOAL_PROMPT_V16_2026-09-14.md.
+# adopted it recorded in docs/archive/GOAL_PROMPT_V16_2026-09-14.md.
 # This used to pin `dynamic`, the policy commit 8da70d2 adopted and commit
 # be84bdf superseded. The runtime's own default moved to a fixed 16384 window
 # (docs/status/CURRENT.md, "the cycle window is a free lever"), so pinning

@@ -169,8 +169,48 @@ static const StaticRecompModuleDesc s_desc = {
 #define RECOMP_MODULE_EXPORT
 #endif
 
+#if defined(BLUEWAKE_NATIVE_ENTRIES)
+/* Wind Waker Recomp's certified native entries (scripts/windows/native_entries.py
+ * hooks them only where the translation is the one their tests compared): the
+ * J3D FIFO matrix loads, two collision checks, PSMTXMultVecSR, the joint matrix
+ * calculations and the actor search by name. Built only with --native-entries;
+ * BLUEWAKE_NATIVE_ENTRIES=0 leaves them to the translation. */
+#include "native_fifo.h"
+#include "native_bg.h"
+#include "native_vec.h"
+#include "native_mtxcalc.h"
+#include "native_search.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static void bluewake_native_entries_enable(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    const char* setting = getenv("BLUEWAKE_NATIVE_ENTRIES");
+    const int on = !(setting && strcmp(setting, "0") == 0);
+    bluewake_native_fifo_enabled = on;
+    bluewake_native_bg_enabled = on;
+    bluewake_native_vec_sr_enabled = on;
+    bluewake_native_mtxcalc_enabled = on;
+    bluewake_native_search_enabled = on;
+    if (on) {
+        atexit(bluewake_native_fifo_report);
+        atexit(bluewake_native_bg_report);
+        atexit(bluewake_native_vec_sr_report);
+        atexit(bluewake_native_mtxcalc_report);
+        atexit(bluewake_native_search_report);
+        fprintf(stderr, "[native-entries] certified native entries enabled\n");
+    }
+}
+#endif
+
 RECOMP_MODULE_EXPORT const StaticRecompModuleDesc* staticrecomp_get_module(void)
 {
+#if defined(BLUEWAKE_NATIVE_ENTRIES)
+    bluewake_native_entries_enable();
+#endif
     return &s_desc;
 }
 

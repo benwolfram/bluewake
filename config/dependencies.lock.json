@@ -112,11 +112,11 @@
     {
       "id": "recompcore",
       "url": "https://github.com/chrissotraidis/RecompCore",
-      "sha": "6c853a1d908af3d6f700510377729f5d4c2c8c31",
-      "branch": "codex/bluewake-donor-batch",
+      "sha": "77d4717d868cec8b4014932bb22978c284a535a7",
+      "branch": "bluewake-next",
       "license": "GPL-3.0",
       "role": "static-recomp runtime (GXRuntime), vendored Aurora renderer at GXRuntime/graphics/aurora, Dolphin DSP donor sources, and the DolRecomp translator as the DolRecomp submodule; the product source for the iPad build (scripts/ios/build_device.sh)",
-      "verified": "2026-10-03",
+      "verified": "2026-10-15",
       "upstream": {
         "url": "https://github.com/ExpansionPak/RecompCore",
         "base_sha": "5c3611e2bcb03d1578274c956bc3d7b913527ec2"
@@ -559,7 +559,12 @@
           "patches/recompcore/0147-smooth-motion-colours-blended-in-the-in-between-frames.patch",
           "patches/recompcore/0148-gxcore-a-draw-s-vertex-constants-kept-when-its-transform-sta.patch",
           "patches/recompcore/0149-gxcore-an-ubershader-draws-what-is-still-compiling.patch",
-          "patches/recompcore/0150-gxcore-the-ubershader-on-by-default-on-d3d12-only-where-it-w.patch"
+          "patches/recompcore/0150-gxcore-the-ubershader-on-by-default-on-d3d12-only-where-it-w.patch",
+          "patches/recompcore/0151-fps-overlay-says-when-smooth-motion-is-paused.patch",
+          "patches/recompcore/0152-gx-front-end-a-draw-s-transform-state-copied-only-wh.patch",
+          "patches/recompcore/0153-smooth-motion-the-mac-s-water-and-hud-indexed-meshes.patch",
+          "patches/recompcore/0154-gxcore-an-hd-replacement-s-own-mip-levels-sampled-th.patch",
+          "patches/recompcore/0155-smooth-motion-only-meshes-whose-positions-the-game-w.patch"
         ],
         "evidence": "Prior runtime candidate passes Mac/Windows regressions. Extended MEM1 aliases, endian reads/writes, reservations, journals, MEM2 and MMIO pass plain/global ASan/UBSan fixtures; full candidate and gameplay/performance acceptance remain pending.",
         "later_donor_dual_texture": {
@@ -590,6 +595,27 @@
           "runtime": "6c853a1d908af3d6f700510377729f5d4c2c8c31",
           "donor": "elliotttate RecompCore 31401e5, 3be805f, 0e631be, bb63c90, 50763a2, 6d0ed15, db2c87f, 44e5c2c (Wind-Waker-Recomp patches 0121, 0123-0129), authorship retained",
           "evidence": "Device lock, multi-threaded pipelines, GX worker reductions, Smooth Motion cloth and colours, ubershader (on by default for D3D12 only). Mac host builds; frame_interp and fps_watch regressions pass; donor measurements not repeated."
+        },
+        "picto_actor_id": {
+          "runtime": "5423b269e01d629fd3668c822887a6d54b620c79",
+          "tracked_patches": [
+            "patches/recompcore/0177-answer-picto-actor-id-from-current-efb.patch"
+          ],
+          "evidence": "Mac M3 Max Metal: clear Lenzo subject 94/detail 0; empty-wall subject 0 with normal warm-cache rendering. Copied card unchanged. Contributors confirmed Linux/M4 Pro and all three Lenzo photos plus bad-photo rejection on Windows. Cold first-use alpha-only draws can still be skipped while pipelines compile; RecompCore#39 is a separate Mac-tested follow-up awaiting Windows/Linux gameplay checks."
+        },
+        "vulkan_resize": {
+          "runtime": "f647d03d3886eb2357950190fe1cba3fa3d10242",
+          "tracked_patches": [
+            "patches/recompcore/0178-Aurora-a-resized-Vulkan-window-keeps-its-surface.patch"
+          ],
+          "evidence": "pdale-boop's RecompCore#38 (#325): on Arch/X11 with an RTX 5070 Ti on Vulkan, window resizes, fullscreen switches and resizes with F1 open keep drawing, with no VK_ERROR_NATIVE_WINDOW_IN_USE_KHR and no stale-size snapback. The size following runs on Vulkan only; on Metal and Direct3D 12 it does nothing. Suboptimal textures are now presented and a lost surface is reconfigured up to 30 times before being released, on every backend."
+        },
+        "picto_copy_crop": {
+          "runtime": "77d4717d868cec8b4014932bb22978c284a535a7",
+          "tracked_patches": [
+            "patches/recompcore/0180-Aurora-aurora_set_copy_crop-for-pictures-taken-through-a-widened-camera.patch"
+          ],
+          "evidence": "pdale-boop's RecompCore#37 (#338): aurora_set_copy_crop(width, height, fraction) makes a texture copy of that size take the middle fraction of its source's width and scale it back, as a 4:3 camera would; both GXCopyTex and gxcore's EFB copies use it. Nothing calls it unless BLUEWAKE_PICTO_CROP=1 (picto_crop=1). Windows 11, i5-12600KF, RTX 5070 Ti, Direct3D 12, 2560x1080: Picto Box and Deluxe Picto Box photos keep their 4:3 shape at 16:9, 16:10 and 21:9; Arch Linux, Vulkan: the same at all three aspects for the Picto Box and at 16:9 for the Deluxe Picto Box."
         }
       }
     },

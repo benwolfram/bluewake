@@ -16,7 +16,8 @@ spec = importlib.util.spec_from_file_location("windows_builder", REPO / "scripts
 bw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bw)
 OPTIONS = ("prepared_blocks", "fixed_cpu", "fixed_mem1", "inline_fp", "gather_pipe", "direct_calls",
-           "inline_gpr", "native_j3d", "native_vec", "native_math", "native_skin", "native_game_math")
+           "inline_gpr", "native_j3d", "native_vec", "native_math", "native_skin", "native_game_math",
+           "lean_memory", "native_entries")
 
 
 class TrainingTest(unittest.TestCase):
@@ -67,21 +68,25 @@ class TrainingTest(unittest.TestCase):
         self.b.run = check
         self.b.configure_app()
 
-    def test_app_profile_only_when_this_clang_reads_it(self):
-        # Visual Studio 2022 17.14's clang 19 cannot read a profile recorded with a newer clang;
-        # the app is then built without it rather than the configure failing.
-        (self.root / "llvm-profdata.exe").write_bytes(b"fixture")
-        for code, used in ((0, True), (1, False)):
-            with self.subTest(code=code):
-                if hasattr(self.b, "_app_profile_readable"):
-                    del self.b._app_profile_readable
-                calls = []
-                self.b.run = lambda name, argv, **kw: calls.append([str(a) for a in argv])
-                with patch.object(bw.subprocess, "run", return_value=SimpleNamespace(returncode=code)):
-                    self.b.configure_app()
-                flags = next(x for x in calls[0] if x.startswith("-DCMAKE_C_FLAGS="))
-                self.assertEqual("-fprofile-instr-use=" in flags, used)
-                self.assertEqual("-flto=thin" in " ".join(calls[0]), used)
+    def test_app_profile_skipped_when_this_clang_cannot_read_it(self):
+        # #153: the committed profile needs clang 22. An llvm-profdata that rejects it means
+        # the app is configured without -fprofile-instr-use instead of failing CMake's check.
+        tools = self.root / "Llvm/x64/bin"; tools.mkdir(parents=True)
+        (tools / "llvm-profdata.exe").write_bytes(b"")
+        rejected = "error: app.profdata: unsupported instrumentation profile format version"
+        for case, result, expect in [
+                ("rejects", SimpleNamespace(returncode=1, stdout="", stderr=rejected), False),
+                ("reads", SimpleNamespace(returncode=0, stdout="Total functions: 6390", stderr=""), True)]:
+            with self.subTest(case=case), patch.object(bw.subprocess, "run", return_value=result) as shown:
+                self.b.clang = str(tools / "clang.exe"); self.b._app_profile_readable = None
+                seen = []
+                self.b.run = lambda name, argv, **kw: seen.append(" ".join(map(str, argv)))
+                self.b.configure_app()
+                self.assertEqual(shown.call_args[0][0][1:], ["show", str(bw.Builder.APP_PROFILE)])
+                self.assertEqual("-fprofile-instr-use=" in seen[0], expect)
+                self.assertEqual("-flto=thin" in seen[0], expect)
+        self.b.clang = str(self.root / "nowhere/clang.exe"); self.b._app_profile_readable = None
+        self.assertFalse(self.b.app_profile_readable())
 
     def test_playback_isolated_and_requires_control_and_profile(self):
         for marker, profile, succeeds in [(False, True, False), (True, False, False), (True, True, True)]:
@@ -93,7 +98,7 @@ class TrainingTest(unittest.TestCase):
                     self.assertEqual(env["BLUEWAKE_DATA_DIR"], str(run))
                     self.assertEqual(env["BLUEWAKE_RENDERER"], "headless")
                     self.assertEqual(env["DOL_AURORA_FRAME_INTERP"], "0")
-                    self.assertEqual(env["BLUEWAKE_OVERLAP_OBSERVATION"], "1")
+                    self.assertNotIn("BLUEWAKE_LAZY_OVERLAP", env)
                     self.assertTrue(env["LLVM_PROFILE_FILE"].startswith(str(run)))
                     if profile: (run / "fixture.profraw").write_bytes(b"fixture")
                     log = self.b.logs / "playback.log"
@@ -111,7 +116,9 @@ class TrainingTest(unittest.TestCase):
         self.b.compile_composite = lambda *a: Path("fixture.dll")
         observed = []
         def playback(exe, module, run, mods, **kw):
-            observed.append(mods);run.mkdir();p = run / "fixture.profraw";p.write_bytes(b"raw");return [p]
+            observed.append((run.name, mods, kw))
+            if kw.get("save_state"): kw["save_state"].write_bytes(b"state")
+            run.mkdir();p = run / "fixture.profraw";p.write_bytes(b"raw");return [p]
         self.b.training_run = playback
         def merge(name, argv, **kwargs):
             Path(argv[3]).write_bytes(b"new profile")
@@ -133,17 +140,66 @@ class TrainingTest(unittest.TestCase):
 
     def test_success_uses_plain_and_mod_runs_and_reuses_matching_profile(self):
         observed = self.setup_training()
-        profile = self.b.train()
-        self.assertEqual(observed, [None, "widescreen,betterww"])
+        with patch.object(bw.os, "cpu_count", return_value=16):
+            profile = self.b.train()
+        runs = {name: (mods, kw) for name, mods, kw in observed}
+        # The opening once plain (saving the tour's state) and once with mods; the tour
+        # from that state, its ten stops split over five playbacks.
+        self.assertEqual(runs["run-plain"][1].get("save_state"), runs["run-tour1"][1]["load_state"])
+        self.assertEqual(runs["run-mods"][0], "widescreen,betterww")
+        tours = [kw["places"] for name, (mods, kw) in sorted(runs.items()) if name.startswith("run-tour")]
+        self.assertEqual(len(tours), 5)
+        self.assertEqual(sorted(p for t in tours for p in t), sorted(bw.Builder.TRAINING_TOUR))
         self.assertEqual(profile.read_bytes(), b"new profile")
+        count = len(observed)
         self.assertEqual(self.b.train(), profile)
-        self.assertEqual(len(observed), 2)
+        self.assertEqual(len(observed), count)
         profile.write_bytes(b"corrupt hashed copy")
         self.assertEqual(self.b.train().read_bytes(), b"new profile")
         self.b.args.retrain = True
         self.b.train()
-        self.assertEqual(len(observed), 4)
+        self.assertGreater(len(observed), count)
         self.assertEqual(len(list((self.root / 'pgo-local').glob('attempt-*'))), 2)
+
+    def test_tour_playbacks_follow_cpus_or_the_option(self):
+        tour = sorted(bw.Builder.TRAINING_TOUR)
+        for cpus, option, expect in [(4, None, 1), (16, None, 5), (64, None, 10), (4, 3, 3), (16, 20, 10)]:
+            with self.subTest(cpus=cpus, option=option), patch.object(bw.os, "cpu_count", return_value=cpus):
+                self.b.args.tour_playbacks = option
+                groups = self.b.tour_groups()
+                self.assertEqual(len(groups), expect)
+                self.assertEqual(sorted(p for g in groups for p in g), tour)
+
+    def package_fixture(self):
+        self.b.app_build = self.root / "app";self.b.app_build.mkdir()
+        (self.b.app_build / "BlueWake.exe").write_bytes(b"synthetic host")
+        crt = self.root / "redist/x64/Microsoft.VC.fixture.CRT";crt.mkdir(parents=True)
+        (crt / "msvcp140_atomic_wait.dll").write_bytes(b"synthetic CRT")
+        self.b.env["VCToolsRedistDir"] = str(self.root / "redist")
+        game = self.root / "game";(game / "rels").mkdir(parents=True)
+        (game / "main.dol").write_bytes(b"synthetic input")
+        self.b.recompcore = self.root / "runtime"
+        dsp = self.b.recompcore / "Data/Sys/GC";dsp.mkdir(parents=True)
+        for name in ("dsp_rom.bin", "dsp_coef.bin"): (dsp / name).write_bytes(b"synthetic DSP")
+        self.b.iso.write_bytes(b"synthetic disc")
+        (self.root / "composite-src.digest").write_text("synthetic digest")
+        self.b.git = lambda *args: "" if args[0] == "status" else "test-source"
+        module = self.root / "synthetic.dll";module.write_bytes(b"synthetic module")
+        return module
+
+    def test_portable_option_marks_the_app_folder_and_keeps_user_data(self):
+        module = self.package_fixture()
+        app = self.b.package(module)
+        self.assertFalse((app / "portable.txt").exists())
+        self.b.args.portable = True
+        (app / "user").mkdir();(app / "user/GZLE01.card").write_bytes(b"player saves")
+        app = self.b.package(module)
+        self.assertTrue((app / "portable.txt").exists())
+        self.assertEqual((app / "user/GZLE01.card").read_bytes(), b"player saves")
+        self.b.args.portable = False
+        app = self.b.package(module)
+        self.assertTrue((app / "portable.txt").exists())
+        self.assertEqual((app / "user/GZLE01.card").read_bytes(), b"player saves")
 
     def test_package_includes_atomic_wait_runtime_and_training_identity(self):
         self.b.app_build = self.root / "app";self.b.app_build.mkdir()

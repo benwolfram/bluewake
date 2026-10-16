@@ -60,7 +60,7 @@ PREPAID_CALL = re.compile(
     r"cycle_block_prepaid = dolrecomp_block_can_precharge\(ctx, [0-9]+u\);",
 )
 
-# The block-entry design of docs/GOAL_PROMPT_V52_2026-09-22.md, item 2: decide at
+# The block-entry design of docs/archive/GOAL_PROMPT_V52_2026-09-22.md, item 2: decide at
 # entry whether no interrupt can fall inside the block, and if so drop every
 # per-instruction charge test. What the design still pays that "prepaid" does not
 # is the decision itself, so this keeps the call and forces the flag anyway - the

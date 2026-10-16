@@ -44,7 +44,7 @@ tell.
 - **Hardware run** (next, by the user): install on an iPad and repeat the checks above.
 - **The route decision after it:** the play-scene source port is the only lever that brings the
   heavy view to 60; the alternative is keeping the speed and widening coverage (sailing, Forsaken
-  Fortress, a dungeon). See [GOAL_PROMPT_V56](../GOAL_PROMPT_V56_2026-09-23.md) item 6.
+  Fortress, a dungeon). See [GOAL_PROMPT_V56](../archive/GOAL_PROMPT_V56_2026-09-23.md) item 6.
 - On the 11-inch iPad the default move stick and D-pad sit over the minimap's corner (SunPad's
   default; the layout editor moves them).
 

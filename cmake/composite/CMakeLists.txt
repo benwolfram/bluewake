@@ -17,6 +17,7 @@ option(BLUEWAKE_NATIVE_GAME_MATH "Use certified native game math" OFF)
 option(BLUEWAKE_NATIVE_SKIN "Use certified native skinning" OFF)
 option(BLUEWAKE_NATIVE_VEC "Use certified native vector functions" OFF)
 option(BLUEWAKE_NATIVE_MATH "Use certified native matrix functions" OFF)
+option(BLUEWAKE_NATIVE_ENTRIES "Use Wind Waker Recomp's certified native entries (scripts/windows/native_entries.py)" OFF)
 option(BLUEWAKE_DIRECT_CALLS "Use explicitly prepared direct-call chunks" OFF)
 option(BLUEWAKE_FIXED_CPU "Use explicitly prepared fixed-address guest CPU chunks" OFF)
 option(BLUEWAKE_FIXED_MEM1 "Use module-owned guest RAM (requires fixed CPU)" OFF)
@@ -165,6 +166,17 @@ if(BLUEWAKE_NATIVE_MATH)
   endif()
 endif()
 
+if(BLUEWAKE_NATIVE_ENTRIES)
+  # The hooks native_entries.py inserts call these; its certification decides
+  # which are hooked. The natives use the direct-call, gather-pipe and vector code.
+  if(NOT BLUEWAKE_DIRECT_CALLS OR NOT BLUEWAKE_GATHER_PIPE OR NOT BLUEWAKE_NATIVE_VEC)
+    message(FATAL_ERROR "Native entries need BLUEWAKE_DIRECT_CALLS, BLUEWAKE_GATHER_PIPE and BLUEWAKE_NATIVE_VEC")
+  endif()
+  target_sources(${MODULE_NAME} PRIVATE native_fifo.c native_bg.c native_mtxcalc.c native_search.c)
+  target_include_directories(${MODULE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_definitions(${MODULE_NAME} PRIVATE BLUEWAKE_NATIVE_ENTRIES=1)
+endif()
+
 if(BLUEWAKE_DIRECT_CALLS)
   file(STRINGS "${COMPOSITE_DIR}/generated.h" DIRECT_MARKER LIMIT_COUNT 1
     REGEX "^#define BLUEWAKE_DIRECT_CALLS_PREPARED 2$")
@@ -206,6 +218,12 @@ if(BLUEWAKE_FIXED_MEM1)
 endif()
 
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "" OUTPUT_NAME "${MODULE_NAME}" UNITY_BUILD OFF C_VISIBILITY_PRESET hidden)
+# Extra sources a builder adds (the Android builder's training-module profile
+# flush, android/src/profile_flush.c); empty otherwise.
+set(COMPOSITE_EXTRA_SOURCES "" CACHE STRING "Extra sources compiled into the module")
+if(COMPOSITE_EXTRA_SOURCES)
+  target_sources(${MODULE_NAME} PRIVATE ${COMPOSITE_EXTRA_SOURCES})
+endif()
 target_compile_definitions(${MODULE_NAME} PRIVATE MODULE_GAME_ID="${GAME_ID}" DOLRECOMP_CPU_HEADER="core/cpu.h")
 target_include_directories(${MODULE_NAME} PRIVATE "${COMPOSITE_DIR}" "${GXRUNTIME_DIR}/include" "${ABI_DIR}")
 if(APPLE)
@@ -234,6 +252,44 @@ if(WIN32)
       -include "${CMAKE_CURRENT_SOURCE_DIR}/../../windows/compat/bw_getenv_cache.h")
 else()
   target_link_libraries(${MODULE_NAME} PRIVATE m)
+endif()
+# ELF (Linux, Steam Deck): the module is a shared object built -fPIC,
+# and the chunks declared each other's symbols with default visibility, so every
+# reference was an address loaded from the GOT that then stayed live in a
+# register across the chunk's one large function. That doubled the register
+# allocator's work: a chunk took 11.7 s here against 5.9 s for the same source
+# compiled for Windows, whose DLLs have no GOT. hidden_externs.h declares the
+# module's own symbols hidden, so each reference is a direct PC-relative operand.
+# Android leaves it out: on ARM64 the game thread then ran about 5% more
+# instructions at Outset's pier (172 M a retrace against 163 M, #93), and players
+# feel that every frame while they wait for the compile once.
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)
+  set(CHUNK_C_SOURCES ${CHUNK_INPUTS})
+  list(FILTER CHUNK_C_SOURCES INCLUDE REGEX "\\.c$")
+  set_property(SOURCE ${CHUNK_C_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+      -include "${CMAKE_CURRENT_SOURCE_DIR}/hidden_externs.h")
+endif()
+
+# ELF: the module's pointer tables need about 2.2 million relative relocations,
+# 24 bytes each as RELA (about 51 MB, and as many fix-ups at every launch).
+# RELR stores runs of them as bitmaps. The loader needs glibc 2.36 for it, and
+# -z pack-relative-relocs records that requirement in the module, so an older
+# glibc refuses to load it rather than running it unrelocated. Only when the
+# glibc it is built against has it: the module is built on the machine that
+# runs it, and a release built on an older baseline (#214) leaves it off.
+if(NOT WIN32 AND NOT APPLE)
+  include(CheckCSourceCompiles)
+  include(CheckLinkerFlag)
+  check_c_source_compiles("
+#include <features.h>
+#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 36)
+#error no DT_RELR
+#endif
+int main(void) { return 0; }" BLUEWAKE_GLIBC_HAS_DT_RELR)
+  check_linker_flag(C "LINKER:-z,pack-relative-relocs" BLUEWAKE_LINKER_PACKS_RELR)
+  if(BLUEWAKE_GLIBC_HAS_DT_RELR AND BLUEWAKE_LINKER_PACKS_RELR)
+    target_link_options(${MODULE_NAME} PRIVATE "LINKER:-z,pack-relative-relocs")
+  endif()
 endif()
 target_compile_options(${MODULE_NAME} PRIVATE -O${COMPOSITE_OPTIMIZATION_LEVEL} -ffp-contract=off)
 

@@ -1,6 +1,12 @@
+## 2026-10-06 Triage checkpoint
+
+Start with [the October 6 handoff](HANDOFF_2026-10-06.md) and
+[the maintained issue queue](TECH_DEBT_2026-10-07.md). Intro audio and Pictobox candidates are opt-in;
+iPad/Windows acceptance and release gates remain distinct. The older entries below are historical.
+
 ## 2026-10-01 BlueWake source-fork integration
 
-See [FORK_INTEGRATION.md](../FORK_INTEGRATION.md) for the current integration and validation status.
+See [FORK_INTEGRATION.md](../archive/FORK_INTEGRATION.md) for the current integration and validation status.
 The September 28–30 entries imported below are elliotttate's engineering records and reported
 measurements, retained for provenance. They are not independent BlueWake device measurements.
 ## 2026-09-30 The Windows build's GX worker work merged (Mac-tested)
@@ -2198,7 +2204,7 @@ belongs to the shared route.
 The user redirected the project: make the game actually work, on iPadOS, tested one simulator at a
 time, no hardware iPad yet. The dossier is
 [IPADOS_REORIENTATION_2026-09-23.md](IPADOS_REORIENTATION_2026-09-23.md) and the loop is
-[v56](../GOAL_PROMPT_V56_2026-09-23.md). Route A is hosted on iPadOS now; Route B continues behind
+[v56](../archive/GOAL_PROMPT_V56_2026-09-23.md). Route A is hosted on iPadOS now; Route B continues behind
 it as the long-term speed track.
 
 **The iPad app exists and plays the retail route.** `apple/ios` builds `BlueWake.app` for the iOS
@@ -5044,7 +5050,7 @@ with the boundary fix: one mutex held by the worker across a batch's translation
 the main thread across the present transition, which cannot deadlock because the main
 thread's only wait on the worker - the drain at the guest-visible barriers - never happens
 inside that window. The queue and the protocol are in
-[docs/GOAL_PROMPT_V54_2026-09-22.md](../GOAL_PROMPT_V54_2026-09-22.md).
+[docs/archive/GOAL_PROMPT_V54_2026-09-22.md](../archive/GOAL_PROMPT_V54_2026-09-22.md).
 
 ## 2026-09-22 The rendered segfault is the GX translation worker's first draw, and the stack names it
 

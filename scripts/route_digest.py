@@ -16,7 +16,7 @@ RECORD = re.compile(
 )
 NORMAL_STOP = re.compile(r"^\[run\] stopped: normal after \d+ blocks at (pc=\S+)$")
 
-# D1, docs/GOAL_PROMPT_V16_2026-09-14.md. The delivery-timing aggregate is not
+# D1, docs/archive/GOAL_PROMPT_V16_2026-09-14.md. The delivery-timing aggregate is not
 # a guest-state record. `[cycle-delivery] summary` shares the tag this selector
 # matches on, so its `hash=` field -- an aggregate over (cycle, cause, pc,
 # context) -- used to gate the route digest, which made any change to
