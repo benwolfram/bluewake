@@ -20,15 +20,16 @@ The merged Picto recognition integration (#341) includes #334 and RecompCore#36.
 photos on pdale-boop's Windows PC. Mac evidence and the separate first-use shader-cache follow-up
 (RecompCore#39, not pinned) are in [the validation record](status/PICTO_RECOGNITION_2026-10-15.md).
 Gallery alignment (#346, merged as `dc45b43`) is checked separately below; the opt-in crop (#338 / RecompCore#37)
-still needs a runtime decision. Native HD import remains draft #315: Windows/Linux CI, audit and attribution
-passed at `3b13534`, and pdale-boop completed a full Linux import from his own dump on October 15 (cancelling
+is in `main` (October 17), off by default. Native HD import is in `main` too (#315, October 17): Windows/Linux CI,
+audit and attribution passed at `ee8758c`, and pdale-boop completed a full Linux import from his own dump on October 15 (cancelling
 kept the earlier pack; after a restart all 3,546 textures loaded). Windows interactive import is still
 unchecked; Android #347's API 36 app import and recovery results do not replace that check
-([current status](GOAL_LOOP.md#where-things-stand-on-october-15)).
+([current status](GOAL_LOOP.md#where-things-stand-on-october-17)).
 
 
 | Change | Issue | What to check | Result |
 | --- | --- | --- | --- |
+| Older GPUs without Direct3D 12 or Vulkan get Direct3D 11: the builder ships the Windows SDK's `d3dcompiler_47.dll` beside `BlueWake.exe` | none (a GTX 550 Ti player on Discord) | Check the build folder has `d3dcompiler_47.dll` and the zip too. Then on a PC or VM without Direct3D 12 (a GPU older than Kepler or GCN, or a VM with Direct3D 11 only): the log says `Attempting to initialize D3D11` then `[renderer] D3D11`, and the game draws. On a normal PC nothing changes: still `[renderer] D3D12`. | The player's 0.6.0 log: D3D12 refused (Resource Binding Tier 2), no Vulkan, D3D11 failed on `DynamicLib.Open: d3dcompiler_47.dll Windows Error: 87`, so the Null renderer drew nothing. Builder test only; not built on Windows yet. Whether Aurora draws correctly on D3D11 is unknown |
 | A resized window keeps drawing (RecompCore#38, patch 0178) | #325 | Direct3D 12 never lost its surface on a resize, but the change also presents "suboptimal" frames and reconfigures a lost surface instead of releasing it. Drag the window's edges for a few seconds, switch fullscreen with F11 and Alt+Enter, and resize with F1 open: the picture follows the window with no black frames, the game keeps running, and the log has no `Surface texture is Lost` lines, or only a few followed by normal play. | Linux (Arch, X11, RTX 5070 Ti, Vulkan): checked by pdale-boop, including F1 open. Windows (Direct3D 12, same PC): pdale-boop played several sessions on `bluewake-next` with #37 and #38, resizing constantly and switching fullscreen on and off: no black frames, stalls or crashes ([#353](https://github.com/chrissotraidis/bluewake/pull/353)). Resizing with F1 open is not yet checked on Windows |
 | Save/load waits for loose REL loads to retire (#350, merged) | #318 / #331 | With the opt-in loose-REL wait enabled and a copied card, request F5 and F8 during a stage load. Saving must defer while a slot is occupied; loading must refuse without replacing the running state. After arrival, normal F5/F8 must work. | Eight extracted-function cases pass on Mac with ASan/UBSan, including multiple/expired slots, timeout, and normal save/load after retirement; the earlier code fails the busy-save regression. Windows/Linux CI pass. Fresh-module Mac R04/R08 rendering checks use host `14bc288`, before #350, and do not test native save/load mid-wait; that remains open. The wait stays off by default. Previously written unsafe snapshots are not repaired. |
 | Safe startup turns the HD look off (#343, merged) | Follow-up to #339 | In a test data folder, save `hd_look=1`, set the `BLUEWAKE_HD_*` per-effect switches, then start with `--safe-mode` or a pending-launch marker. The first `[hd-look]` line and Display switch must be off; F2 must turn every effect on and off again. Check the original settings backup and `hd_look=0` in the reset file. With a failed backup, the file must stay unchanged at startup and the session must still start with HD off. | Mac fixtures and a fresh Metal gameplay check pass: startup off, F2 on/off, backup and copied card unchanged. Windows/Linux CI pass; native Windows/Linux checks remain. [Evidence](status/SAFE_MODE_HD_2026-10-15.md) |
@@ -55,9 +56,9 @@ unchecked; Android #347's API 36 app import and recovery results do not replace 
 | Picto Box photos under widescreen keep their 4:3 shape (`picto_crop=1` in `settings.ini`, off by default) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn, with `picto_crop=1` added to `settings.ini` (`BLUEWAKE_PICTO_CROP=1` also works): the log's `[aspect]` line ends "Picto Box photos cropped to 4:3", and a new photo, from the Picto Box and the Deluxe Picto Box, keeps the shape of what was in the middle of the viewfinder instead of the whole wide view squeezed. Without it, photos are as before. | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`, and the gallery fix) at 2560x1080: photos from both Picto Boxes with the crop at 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build with RecompCore#37's commit: new photos from the Picto Box with `BLUEWAKE_PICTO_CROP=1` at all three, and from the Deluxe Picto Box at 16:9; without it, 16:9 photos are squeezed. Mac: not built or run yet |
 | The Picto Box gallery under widescreen: photos as wide as their frames, and in them (#346, merged `dc45b43`) | | Widescreen 16:9, 16:10 and 21:9 (Mods), each in turn: in the Picto Box gallery the middle photo sits in its frame, and so do the ones beside it, at rest and while sliding. At 21:9 a photo is as wide as its frame (it was squeezed to 77% of it). | Windows (i5-12600KF, RTX 5070 Ti): checked by pdale-boop on a trained build (with `--behaviour-timing`) at 2560x1080: 16:9, 16:10 and 21:9. Linux (Arch, X11, the same i5-12600KF and RTX 5070 Ti, Vulkan): checked by pdale-boop on a trained build: 16:9, 16:10 and 21:9. M3 Max/Metal, fresh module, host `14bc288` / runtime `57123c6`: all three photos align at each aspect; left/right navigation endpoints captured, not frame-by-frame animation. All three runs exit 0 with copied cards unchanged ([evidence](status/PICTO_RECOGNITION_2026-10-15.md#gallery-alignment)). |
 
-### Draft native HD importer (#315)
+### The native HD importer (#315, merged October 17)
 
-This is not in `main` or a download yet. On a build of #315, use
+In `main`, not yet in a download. On a build of `main`, use
 **F1 › Mods › Wind Waker HD textures › Import from Wind Waker HD…** with
 your own decrypted folder, then a USA WUD/WUX image and its keys:
 
@@ -70,7 +71,7 @@ your own decrypted folder, then a USA WUD/WUX image and its keys:
   loads. Turn HD textures off, Resume and restart; check gameplay with original
   textures. Turn them on, Resume and restart again to check the pack. Confirm key paths
   and values are absent from settings. Compare the pack against the script
-  using [the documented check](status/WWHD_NATIVE_IMPORT_2026-10-15.md#native-importer-memory-check-october-15-2026).
+  using [the documented check](WWHD_TEXTURES.md#native-importer-memory-check-october-15-2026).
 - Repeat with portable mode, a path containing spaces/non-ASCII characters,
   and both mouse and controller navigation.
 - In a separate test data folder, force-close an import and retry: its marked temporary

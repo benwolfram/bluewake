@@ -121,7 +121,7 @@ BlueWake-specific end-to-end installation has not been verified with every tool.
 | [Sideloadly](https://sideloadly.io/) | Mac app: connect the device, drag the IPA in, sign in with your Apple ID |
 | [AltStore](https://altstore.io/) | AltServer on the Mac installs AltStore on the device; add the IPA from AltStore's **My Apps** |
 | [SideStore](https://sidestore.io/) | Like AltStore, but refreshes on the device without the Mac |
-| Xcode | Sign and install from the Builder directly: `--identity`, `--profile` and `--install` ([DEVICE_BUILD.md](status/DEVICE_BUILD.md)) |
+| Xcode | Sign and install from the Builder directly: `--identity`, `--profile` and `--install` ([DEVICE_BUILD.md](DEVICE_BUILD.md)) |
 
 With a free Apple ID, apps expire after seven days; refresh them with the same tool (your saves stay).
 The device needs **Developer Mode** on (Settings › Privacy & Security), and the first launch may ask you to
@@ -164,6 +164,13 @@ The build includes the Widescreen (16:9 and 16:10, and 21:9 on the Mac) and Bett
 **⋯ › Mods › Better Wind Waker Settings**. No patched disc is needed. See [MODS.md](MODS.md).
 
 ## If something fails
+
+**Sideloading fails with error -80045** ("This action cannot be completed at this time"): Apple's sign-in rejected
+the sideloading tool's login. It isn't the IPA. Since mid-October 2026 it has hit Sideloadly, AltStore and SideStore
+alike. Update the tool, sign out of the Apple ID in it and sign in again, turn off any VPN or try another network,
+or try a separate Apple ID kept for sideloading. Sometimes the only fix is waiting for the tool's update. On the Mac that
+built the IPA, Xcode can install it instead: the Builder's `--identity`, `--profile` and `--install` options
+([DEVICE_BUILD.md](DEVICE_BUILD.md)).
 
 If a Mac build reports missing SQLite functions, Mono headers, or a Homebrew SQLite dependency
 that is not self-contained, update BlueWake and rerun the same build command. Both the local

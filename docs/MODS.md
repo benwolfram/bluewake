@@ -1,9 +1,8 @@
 # Mods
 
 BlueWake has a **Mods** section in the in-game ⋯ menu on iPhone and iPad, and a **Mods** tab in the F1 menu
-on Mac, Linux and Windows. **Wind Waker HD textures** comes first in it on every build. Widescreen, Better
-Wind Waker and texture-pack choices take effect the next time BlueWake starts. Other options below state
-when they apply; gameplay options can affect normal saved progress.
+on Mac, Linux and Windows. **Wind Waker HD textures** comes first in it on every build. Each mod takes
+effect the next time BlueWake starts, and none of them changes your saves.
 
 | Mod | What it does | What you need |
 | --- | --- | --- |
@@ -40,9 +39,8 @@ sidecar mipmaps are used, and PNG and DDS files both work. The menu shows how ma
 pack where it is, with nothing copied.
 
 You can also [import compatible textures from your own Wii U Wind Waker HD
-disc](WWHD_TEXTURES.md). The script creates a Dolphin-format pack; add it the same way, in
-**Mods › Wind Waker HD textures**. Native in-app import is draft #315, with Android integration in draft
-#347; see the linked guide for the current checks and remaining limits.
+disc](WWHD_TEXTURES.md). The local importer creates a Dolphin-format pack;
+add it the same way, in **Mods › Wind Waker HD textures**.
 
 **Better Wind Waker:** turn on *Better Wind Waker*, pick its settings in **⋯ › Mods › Better Wind Waker
 Settings** and restart. Each of Better Wind Waker's settings is a switch of its own, on or off by Better
